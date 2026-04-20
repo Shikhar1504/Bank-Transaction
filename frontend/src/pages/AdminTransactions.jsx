@@ -190,7 +190,7 @@ function AdminTransactions() {
         </div>
       )}
 
-      <div className="glass-panel overflow-hidden">
+      <div className="glass-panel-premium overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-white/5 text-sm">
             <thead className="text-left text-xs uppercase tracking-wider text-slate-500 font-semibold border-b border-white/5">
@@ -288,7 +288,7 @@ function AdminTransactions() {
                           </div>
                           <button
                             onClick={() => setSelectedTx(tx)}
-                            className="mt-2 w-full rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-1.5 text-xs font-semibold text-brand-300 hover:bg-brand-500/20 hover:border-brand-500/50 transition-all active:scale-95"
+                            className="mt-3 w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white hover:text-slate-900 transition-all shadow-md active:scale-95"
                           >
                             View TX Details
                           </button>

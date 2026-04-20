@@ -92,7 +92,7 @@ function AdminUsers() {
         </div>
       )}
 
-      <div className="glass-panel overflow-hidden">
+      <div className="glass-panel-premium overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-white/5 text-sm">
             <thead className="text-left text-xs uppercase tracking-wider text-slate-500 font-semibold border-b border-white/5">

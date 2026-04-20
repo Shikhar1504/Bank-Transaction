@@ -152,20 +152,23 @@ function Dashboard() {
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white font-display">Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-1">Manage your wealth easily</p>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white font-display">Dashboard</h1>
+          <p className="text-sm text-slate-400 mt-1">Manage your wealth easily</p>
         </div>
 
         <button
           onClick={createAccount}
           disabled={creating || accounts.length >= 1}
-          className={`rounded-xl px-5 py-2.5 text-sm font-semibold shadow-md transition-all active:scale-95 ${
+          className={`rounded-xl px-5 py-2.5 text-sm font-semibold shadow-md transition-all active:scale-95 group relative overflow-hidden ${
             accounts.length >= 1
               ? "border border-white/10 bg-white/5 text-slate-600 cursor-not-allowed shadow-none"
-              : "bg-brand-600 hover:bg-brand-500 text-white shadow-brand-600/25"
+              : "border border-brand-500/30 bg-gradient-to-r from-brand-600 to-brand-500 text-white shadow-brand-600/25 hover:shadow-brand-500/40"
           }`}
         >
-          {creating ? "Creating..." : accounts.length >= 1 ? "Limit Reached" : "Open Account"}
+          {!(accounts.length >= 1) && (
+             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:transition-all group-hover:duration-700 group-hover:translate-x-full" />
+          )}
+          <span className="relative z-10">{creating ? "Creating..." : accounts.length >= 1 ? "Limit Reached" : "Open Account"}</span>
         </button>
       </div>
 
@@ -181,16 +184,17 @@ function Dashboard() {
           <div className="h-8 bg-white/5 rounded w-1/2 mx-auto" />
         </div>
       ) : accounts.length === 0 ? (
-        <div className="glass-panel relative overflow-hidden p-10 text-center h-64 flex flex-col justify-center items-center">
+        <div className="glass-panel-premium relative overflow-hidden p-10 text-center h-64 flex flex-col justify-center items-center group">
           <div className="absolute inset-0 bg-gradient-to-br from-brand-600/5 to-transparent rounded-2xl" />
+          <div className="absolute top-0 right-0 w-40 h-40 bg-brand-500/10 blur-3xl rounded-full mix-blend-screen opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
           <div className="relative z-10 space-y-4">
-            <div className="h-16 w-16 bg-brand-500/10 border border-brand-500/20 rounded-2xl mx-auto flex items-center justify-center text-brand-400 mb-4">
+            <div className="h-16 w-16 bg-white/[0.03] border border-white/10 rounded-2xl mx-auto flex items-center justify-center text-brand-400 mb-4 shadow-lg ring-1 ring-white/5">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-white font-display">No account yet</h2>
-            <p className="text-sm text-slate-500 max-w-md mx-auto">Open a secure AegisLedger digital account in one click to get started.</p>
+            <h2 className="text-2xl font-bold text-white font-display tracking-tight">No account yet</h2>
+            <p className="text-sm text-slate-400 max-w-sm mx-auto leading-relaxed">Open a secure AegisLedger digital account in one click to get started.</p>
           </div>
         </div>
       ) : (
@@ -198,22 +202,24 @@ function Dashboard() {
           {/* Virtual Card */}
           {primaryAccount && (
             <div className="lg:col-span-1">
-              <article className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-6 shadow-2xl shadow-black/40 isolate h-[240px] flex flex-col justify-between border border-white/8 transition-transform duration-500 hover:scale-[1.02]">
-                {/* decorations */}
-                <div className="absolute -top-24 -right-24 h-48 w-48 rounded-full bg-brand-500/20 blur-3xl" />
-                <div className="absolute bottom-0 left-0 h-32 w-32 rounded-full bg-violet-500/15 blur-2xl" />
+              <article className="relative overflow-hidden rounded-2xl p-6 shadow-2xl flex flex-col justify-between border border-white/20 transition-transform duration-500 hover:scale-[1.03] hover:shadow-brand-500/20 aspect-[1.58] bg-gradient-to-tr from-slate-900 via-slate-800 to-slate-900 isolation-auto">
+                {/* Embedded Metallic/Glass Finish Layers */}
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/brushed-alum.png')] opacity-[0.03] mix-blend-overlay z-0"></div>
+                <div className="absolute -top-[40%] -right-[30%] h-full w-[120%] rotate-12 bg-gradient-to-b from-white/10 to-transparent pointer-events-none z-0" />
+                <div className="absolute -top-24 -right-24 h-56 w-56 rounded-full bg-brand-500/30 blur-[60px] z-0" />
+                <div className="absolute bottom-[-10%] left-[-10%] h-40 w-40 rounded-full bg-violet-600/20 blur-[50px] z-0" />
 
                 <div className="relative z-10 flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Total Balance</p>
-                    <p className="mt-2 text-4xl font-light tracking-tight text-white">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-300 drop-shadow-md">Available Balance</h3>
+                    <p className="mt-2 text-[2.5rem] font-light tracking-tight text-white leading-none drop-shadow-lg font-display">
                       {formatMoney(primaryAccount.liveBalance)}
                     </p>
                   </div>
-                  <div className="h-8 w-12 rounded-md bg-white/10 border border-white/10 flex items-center justify-center">
-                    <svg className="h-4 w-4 text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
+                  <div className="h-8 w-11 rounded-lg bg-gradient-to-br from-amber-200/80 to-amber-400/80 shadow-inner flex items-center justify-center opacity-80 backdrop-blur-sm relative overflow-hidden">
+                     <div className="absolute inset-0 bg-black/10"></div>
+                     {/* Simulating chip lines */}
+                     <div className="w-full flex justify-around absolute opacity-30"><div className="w-px h-8 bg-black/50 overflow-visible"></div><div className="w-px h-8 bg-black/50"></div></div>
                   </div>
                 </div>
 
@@ -241,9 +247,9 @@ function Dashboard() {
           )}
 
           {/* Recent Transactions */}
-          <div className="lg:col-span-2 glass-panel p-6 overflow-hidden flex flex-col h-[240px]">
-            <div className="mb-4 flex items-center justify-between shrink-0">
-              <h2 className="text-base font-bold text-white font-display">Recent Activity</h2>
+          <div className="lg:col-span-2 glass-panel-premium p-6 overflow-hidden flex flex-col min-h-[240px]">
+            <div className="mb-5 flex items-center justify-between shrink-0 border-b border-white/5 pb-4">
+              <h2 className="text-lg font-bold text-white font-display tracking-tight">Recent Activity</h2>
               {loadingRecent ? (
                 <span className="text-xs font-medium text-brand-400 animate-pulse bg-brand-500/10 px-2 py-1 rounded-full">Refreshing...</span>
               ) : (

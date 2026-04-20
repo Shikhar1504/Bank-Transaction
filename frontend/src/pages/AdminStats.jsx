@@ -71,7 +71,7 @@ function AdminStats() {
 
   if (loading) {
     return (
-      <div className="glass-panel p-12 text-center">
+      <div className="glass-panel-premium p-12 text-center">
         <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent mx-auto block mb-4" />
         <p className="text-sm font-medium text-slate-500">Loading platform analytics...</p>
       </div>
@@ -104,7 +104,7 @@ function AdminStats() {
         {STAT_CARDS.map((card) => (
           <article
             key={card.key}
-            className={`group glass-panel p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-0.5 ${card.glow}`}
+            className={`group glass-panel-premium p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-0.5 ${card.glow}`}
           >
             {/* Glow orb */}
             <div className={`absolute -top-6 -right-6 w-20 h-20 rounded-full bg-gradient-to-br ${card.color} opacity-0 group-hover:opacity-15 blur-2xl transition-opacity duration-500`} />

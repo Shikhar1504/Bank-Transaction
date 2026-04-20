@@ -4,8 +4,8 @@ function AccountActionButtons({ label, accountId, accountStatus, onAction }) {
   const actionLabel = action === "freeze" ? "Freeze" : "Unfreeze";
   const buttonClass =
     action === "freeze"
-      ? "border-amber-500/30 text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 hover:border-amber-500/50"
-      : "border-emerald-500/30 text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 hover:border-emerald-500/50";
+      ? "border-amber-400 text-amber-950 bg-amber-400 hover:bg-amber-300 hover:shadow-[0_0_15px_rgba(251,191,36,0.3)]"
+      : "border-emerald-400 text-emerald-950 bg-emerald-400 hover:bg-emerald-300 hover:shadow-[0_0_15px_rgba(52,211,153,0.3)]";
 
   return (
     <div className="space-y-1">

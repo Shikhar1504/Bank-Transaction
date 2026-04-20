@@ -49,8 +49,8 @@ function createIdempotencyKey() {
 }
 
 // Shared input class for dark theme
-const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all focus:border-brand-500/50 focus:ring-4 focus:ring-brand-500/10";
-const labelCls = "block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5";
+const inputCls = "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all focus:border-brand-500/50 focus:bg-white/5 focus:ring-4 focus:ring-brand-500/10 shadow-inner";
+const labelCls = "block text-xs font-bold text-slate-400 uppercase tracking-[0.05em] mb-2";
 
 function Transfer() {
   const { addToast } = useNotificationStore();
@@ -158,17 +158,21 @@ function Transfer() {
   return (
     <section className="mx-auto max-w-xl animate-fade-in-up">
       {/* Header */}
-      <div className="mb-8 text-center mt-4">
-        <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-brand-500/20 to-brand-600/20 border border-brand-500/30 flex items-center justify-center text-brand-400 mb-5 shadow-lg shadow-brand-500/10">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="mb-10 text-center mt-4">
+        <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-brand-400/20 to-brand-600/20 border border-brand-500/30 flex items-center justify-center text-brand-400 mb-6 shadow-[0_0_40px_rgba(99,102,241,0.2)] relative">
+          <div className="absolute inset-0 bg-brand-500/20 blur-md rounded-2xl animate-pulse-slow"></div>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
           </svg>
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-white font-display">Transfer Funds</h1>
-        <p className="text-sm text-slate-500 mt-2">Send money securely from your dashboard</p>
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white font-display leading-tight">Transfer Funds</h1>
+        <p className="text-sm text-slate-400 mt-2">Send money securely from your dashboard</p>
       </div>
 
-      <div className="glass-panel p-8">
+      <div className="glass-panel-premium p-8 relative overflow-hidden">
+        {/* Glow behind the form */}
+        <div className="absolute -top-32 -left-32 w-64 h-64 bg-brand-600/10 rounded-full blur-[80px] pointer-events-none" />
+        
         {loadingAccounts ? (
           <div className="animate-pulse space-y-4">
             <div className="h-10 bg-white/5 rounded-xl" />
@@ -257,10 +261,11 @@ function Transfer() {
             </div>
 
             {/* Idempotency Status Banner */}
-            <div className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-4">
-              <div>
-                <p className="text-xs font-semibold text-slate-300">Idempotency Protection Active</p>
-                <p className="text-[10px] text-slate-600 mt-0.5">Duplicate requests are safely blocked</p>
+            <div className="flex items-center justify-between rounded-xl border border-brand-500/20 bg-brand-500/5 p-4 shadow-inner relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-brand-500" />
+              <div className="pl-2">
+                <p className="text-xs font-bold tracking-wide text-brand-300">Idempotency Protection Active</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Duplicate requests are safely blocked</p>
               </div>
               <div>
                 {statusBadge(workflowStatus === "IDLE" ? "INITIATED" : workflowStatus)}
@@ -287,12 +292,17 @@ function Transfer() {
             <button
               type="submit"
               disabled={submitting}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+              className="group relative flex w-full items-center justify-center gap-2 rounded-xl border border-brand-500/30 bg-gradient-to-r from-brand-600 to-brand-500 px-4 py-4 text-sm font-bold text-white shadow-xl shadow-brand-600/25 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none overflow-hidden"
             >
-              {submitting && (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              {!submitting && (
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:transition-all group-hover:duration-700 group-hover:translate-x-full" />
               )}
-              {submitting ? "Processing Transfer..." : "Confirm & Send Money"}
+              <span className="relative z-10 flex items-center justify-center gap-2">
+                {submitting && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                )}
+                {submitting ? "Processing Transfer..." : "Confirm & Send Money"}
+              </span>
             </button>
 
             {/* Transaction Meta */}
