@@ -13,7 +13,10 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: true,
+    origin:
+      process.env.NODE_ENV === "production"
+        ? "https://aegisledger.vercel.app"
+        : true,
     credentials: true,
   }),
 );
