@@ -179,8 +179,8 @@ export async function getAllTransactions(req, res) {
       .skip(skip)
       .limit(limit)
       // 🔥 populate for better API
-      .populate("fromAccount", "_id balance")
-      .populate("toAccount", "_id balance")
+      .populate("fromAccount", "_id balance status")
+      .populate("toAccount", "_id balance status")
       .lean();
 
     const total = await transactionModel.countDocuments(filter);
