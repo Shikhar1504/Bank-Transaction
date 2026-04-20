@@ -159,15 +159,15 @@ Solution: Ledger entries are immutable and every transfer outcome is written to 
 
 ## ⚙️ Tech Stack
 
-| Layer     | Technology            |
-| --------- | --------------------- |
-| Runtime   | Node.js               |
-| Framework | Express 4             |
-| Database  | MongoDB               |
-| ODM       | Mongoose              |
-| Validation| Zod                   |
-| Auth      | JSON Web Tokens       |
-| Security  | bcrypt, cookie-parser |
+| Layer      | Technology            |
+| ---------- | --------------------- |
+| Runtime    | Node.js               |
+| Framework  | Express 4             |
+| Database   | MongoDB               |
+| ODM        | Mongoose              |
+| Validation | Zod                   |
+| Auth       | JSON Web Tokens       |
+| Security   | bcrypt, cookie-parser |
 
 ## 📁 Project Structure
 
@@ -412,3 +412,71 @@ npm run dev
 ## 💼 Resume Snapshot
 
 Built a production-grade banking backend handling concurrency, fault tolerance, and financial data integrity using atomic transactions, state-driven retries, compound index-based idempotency, immutable double-entry ledgering, and event-driven architecture with audit logging and RBAC controls.
+
+## 🖥️ Frontend (React Dashboard)
+
+This repository now includes a production-style frontend dashboard in the `frontend/` folder, built to visualize backend reliability signals clearly without changing backend contracts.
+
+### Frontend Stack
+
+- React (Vite)
+- Tailwind CSS
+- Axios
+- React Router
+- Zustand (auth and notification state)
+
+### Frontend Capabilities
+
+- Authentication flow:
+  - Register, Login, Logout
+  - Protected user routes and admin-only routes
+- User dashboard:
+  - Available balance
+  - Account status
+  - Shortened account number with copy action
+  - Recent transactions overview
+- Transfer flow:
+  - Idempotency-key based transaction submission
+  - Submit loading and status feedback
+  - Success/failure system feedback with toast notifications
+- Transactions view:
+  - Status-driven badges (INITIATED / PROCESSING / COMPLETED / FAILED)
+  - Direction badges (IN / OUT)
+  - Retry and failure details when returned by API
+- Admin panel:
+  - Users listing with account status
+  - Transaction monitoring with filters, retry/failure visibility, and details modal
+  - Freeze/unfreeze account controls with state-driven actions
+  - Admin stats view
+
+### Frontend Folder Structure
+
+```text
+frontend/
+├─ index.html
+├─ package.json
+├─ tailwind.config.js
+├─ vite.config.js
+└─ src/
+   ├─ main.jsx
+   ├─ App.jsx
+   ├─ index.css
+   ├─ api/
+   ├─ components/
+   ├─ pages/
+   └─ store/
+```
+
+### Run Frontend Locally
+
+From repository root:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Default Vite dev server: `http://localhost:5173`
+
+The frontend is configured to call backend APIs under `/api` and is designed to work with the existing backend routes in this project.
