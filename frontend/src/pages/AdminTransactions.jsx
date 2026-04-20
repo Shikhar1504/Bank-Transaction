@@ -123,174 +123,213 @@ function AdminTransactions() {
   const totalPages = Math.max(Math.ceil(total / limit), 1);
 
   return (
-    <section className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          Admin Transactions
-        </h1>
-        <p className="text-sm text-slate-500">
-          Filter and review all transactions
-        </p>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
+    <section className="space-y-6 animate-fade-in-up">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            Status
+          <div className="flex items-center gap-3 mb-2">
+            <span className="inline-flex items-center justify-center rounded-lg bg-orange-500 h-8 w-8 text-white shadow-sm shadow-orange-500/20">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            </span>
+            <h1 className="text-3xl font-bold tracking-tight text-white font-display">
+              System Transactions
+            </h1>
+          </div>
+          <p className="text-sm text-slate-500 mt-1">
+            Global monitoring and transaction resolution
+          </p>
+        </div>
+
+        <div className="relative z-10 w-full sm:w-64">
+          <label className="mb-1.5 block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            Filter by Status
           </label>
-          <select
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-              setPage(1);
-            }}
-            className="w-48 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-          >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option || "ALL"} value={option}>
-                {option || "All"}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value);
+                setPage(1);
+              }}
+              className="w-full appearance-none rounded-xl border border-white/10 bg-white/5 backdrop-blur-md px-4 py-2.5 pr-10 outline-none focus:border-brand-500/50 focus:ring-4 focus:ring-brand-500/10 transition-all font-semibold text-sm text-slate-200 shadow-sm"
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option || "ALL"} value={option} className="bg-slate-900 text-slate-100">
+                  {option || "All Statuses"}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+              <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
         </div>
       </div>
 
       {error && (
-        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {error}
+        <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-300 flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <span>{error}</span>
         </div>
       )}
 
       {actionNotice && (
-        <div
-          className={`rounded-md border px-3 py-2 text-sm ${
+        <div className={`rounded-xl border px-4 py-3 text-sm flex items-center gap-2 ${
             actionNotice.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-rose-200 bg-rose-50 text-rose-700"
+              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+              : "border-rose-500/25 bg-rose-500/10 text-rose-300"
           }`}
         >
-          {actionNotice.message}
+          {actionNotice.type === "success" ? (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          )}
+          <span>{actionNotice.message}</span>
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Amount</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Retry Count</th>
-              <th className="px-4 py-3">Failure Reason</th>
-              <th className="px-4 py-3">From Balance (Post-Tx)</th>
-              <th className="px-4 py-3">To Balance (Post-Tx)</th>
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
+      <div className="glass-panel overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-white/5 text-sm">
+            <thead className="text-left text-xs uppercase tracking-wider text-slate-500 font-semibold border-b border-white/5">
               <tr>
-                <td
-                  colSpan={7}
-                  className="px-4 py-6 text-center text-slate-500"
-                >
-                  Loading transactions...
-                </td>
+                <th className="px-6 py-4">Transfer Details</th>
+                <th className="px-6 py-4">Status & Health</th>
+                <th className="px-6 py-4">Failure Reason</th>
+                <th className="px-6 py-4">Account Balances</th>
+                <th className="px-6 py-4">Actions / Resolution</th>
               </tr>
-            ) : transactions.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-4 py-6 text-center text-slate-500"
-                >
-                  No transactions found
-                </td>
-              </tr>
-            ) : (
-              transactions.map((tx) => {
-                const fromState = getAccountState(tx.fromAccount);
-                const toState = getAccountState(tx.toAccount);
-                return (
-                  <tr
-                    key={tx._id}
-                    className={tx.status === "FAILED" ? "bg-rose-50/40" : ""}
-                  >
-                    <td className="px-4 py-3">
-                      {tx.displayAmount || formatMoney(tx.amount)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={tx.status} />
-                    </td>
-                    <td className="px-4 py-3">
-                      {tx.status === "FAILED"
-                        ? `Retries Used: ${tx.retryCount ?? 0} of 3`
-                        : (tx.retryCount ?? 0)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600">
-                      {tx.failureReason ||
-                        (tx.status === "FAILED" ? "Unknown" : "-")}
-                    </td>
-                    <td className="px-4 py-3">
-                      {tx.fromAccount?.balance ?? "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {tx.toAccount?.balance ?? "-"}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <div className="space-y-3">
-                        <AccountActionButtons
-                          label="From Account"
-                          accountId={tx.fromAccount?._id}
-                          accountStatus={fromState}
-                          onAction={runAccountAction}
-                        />
-                        <AccountActionButtons
-                          label="To Account"
-                          accountId={tx.toAccount?._id}
-                          accountStatus={toState}
-                          onAction={runAccountAction}
-                        />
-                        <button
-                          onClick={() => setSelectedTx(tx)}
-                          className="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                        >
-                          View Details
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center space-y-3">
+                      <span className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+                      <span className="text-sm font-medium text-slate-500">Loading master ledger...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : transactions.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-16 text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-base font-semibold text-slate-600">No transactions recorded</p>
+                  </td>
+                </tr>
+              ) : (
+                transactions.map((tx) => {
+                  const fromState = getAccountState(tx.fromAccount);
+                  const toState = getAccountState(tx.toAccount);
+                  return (
+                    <tr
+                      key={tx._id}
+                      className={`transition-colors hover:bg-white/[0.03] group ${tx.status === "FAILED" ? "bg-rose-500/5" : ""}`}
+                    >
+                      <td className="px-6 py-4 align-top">
+                        <div className="flex flex-col">
+                          <span className="text-base font-bold text-slate-100">
+                            {tx.displayAmount || formatMoney(tx.amount)}
+                          </span>
+                          <span className="text-xs font-mono text-slate-600 mt-1" title={tx._id}>
+                            ID: {tx._id.slice(-8).toUpperCase()}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        <div className="space-y-2">
+                          <StatusBadge status={tx.status} />
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                            <span>
+                              {tx.status === "FAILED"
+                                ? `Retries Used: ${tx.retryCount ?? 0}/3`
+                                : `Retries: ${tx.retryCount ?? 0}/3`}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 align-top w-48">
+                        <span className={`text-xs ${tx.status === "FAILED" ? "text-rose-400 font-medium" : "text-slate-600"}`}>
+                          {tx.failureReason || (tx.status === "FAILED" ? "Unknown Engine Failure" : "N/A")}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        <div className="space-y-2 text-xs font-mono bg-white/[0.04] p-2.5 rounded-lg border border-white/8">
+                          <div className="flex justify-between gap-4">
+                            <span className="text-slate-600">From Bal:</span>
+                            <span className="font-semibold text-slate-300">{tx.fromAccount?.balance ?? "-"}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-slate-600">To Bal:</span>
+                            <span className="font-semibold text-slate-300">{tx.toAccount?.balance ?? "-"}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        <div className="space-y-2.5">
+                          <div className="space-y-2">
+                            <AccountActionButtons
+                              label="Source Acc"
+                              accountId={tx.fromAccount?._id}
+                              accountStatus={fromState}
+                              onAction={runAccountAction}
+                            />
+                            <AccountActionButtons
+                              label="Dest Acc"
+                              accountId={tx.toAccount?._id}
+                              accountStatus={toState}
+                              onAction={runAccountAction}
+                            />
+                          </div>
+                          <button
+                            onClick={() => setSelectedTx(tx)}
+                            className="mt-2 w-full rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-1.5 text-xs font-semibold text-brand-300 hover:bg-brand-500/20 hover:border-brand-500/50 transition-all active:scale-95"
+                          >
+                            View TX Details
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination Controls */}
+        <div className="flex items-center justify-between border-t border-white/5 px-6 py-4">
+          <p className="text-sm font-medium text-slate-500">
+            Page <span className="text-slate-200 font-semibold">{page}</span> of <span className="text-slate-200 font-semibold">{totalPages}</span>
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 transition-all hover:bg-white/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 transition-all hover:bg-white/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
 
       <TransactionDetailsModal
         transaction={selectedTx}
         onClose={() => setSelectedTx(null)}
       />
-
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          Page {page} of {totalPages}
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Previous
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Next
-          </button>
-        </div>
-      </div>
     </section>
   );
 }

@@ -1,11 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Outfit:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
-  @apply bg-slate-50 text-slate-800;
+  @apply font-sans antialiased text-slate-100;
+  background-color: #080c16;
+  background-image: 
+    radial-gradient(ellipse 80% 50% at 20% -5%, rgba(99, 102, 241, 0.18), transparent),
+    radial-gradient(ellipse 60% 50% at 80% 100%, rgba(14, 165, 233, 0.12), transparent),
+    radial-gradient(ellipse 50% 60% at 50% 50%, rgba(15, 23, 42, 0.95), transparent);
+  background-attachment: fixed;
+  min-height: 100vh;
 }
+
+/* ========================
+   GLASS UTILITIES — DARK
+   ======================== */
+
+/* Main content panels — frosted dark glass */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 1rem;
+}
+
+/* Navigation bar — slightly lighter glass */
+.glass-nav {
+  background: rgba(8, 12, 22, 0.8);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.12);
+  box-shadow: 0 1px 16px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+/* Smaller cards / alerts */
+.glass-card {
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+}
+.glass-card:hover {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+/* Input fields in dark theme */
+.input-dark {
+  @apply w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none transition-all;
+  @apply focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10;
+}
+
+/* Table cells inside glass panels inherit dark color */
+.glass-panel table thead th {
+  color: rgba(148, 163, 184, 0.9);
+}
+.glass-panel table tbody tr:hover {
+  background: rgba(99, 102, 241, 0.05);
+}
+.glass-panel table tbody td {
+  color: #cbd5e1;
+}
+
+/* Custom Webkit scrollbar for premium feel */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 9999px;
+  cursor: pointer;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+/* Selection color */
+::selection {
+  background: rgba(99, 102, 241, 0.35);
+  color: white;
+}
+
+/* Glow utilities */
+.glow-indigo {
+  box-shadow: 0 0 40px rgba(99, 102, 241, 0.25);
+}
+.glow-brand {
+  box-shadow: 0 0 40px rgba(14, 165, 233, 0.2);
+}
+

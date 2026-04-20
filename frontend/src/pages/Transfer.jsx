@@ -12,31 +12,30 @@ function formatMoney(value) {
 function statusBadge(status) {
   if (status === "PROCESSING") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
-        <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-300">
+        <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
         PROCESSING
       </span>
     );
   }
-
   if (status === "FAILED") {
     return (
-      <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-1 text-xs font-medium text-rose-700">
+      <span className="inline-flex items-center rounded-full border border-rose-500/30 bg-rose-500/15 px-2.5 py-1 text-xs font-semibold text-rose-300">
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-400 mr-1.5" />
         FAILED
       </span>
     );
   }
-
   if (status === "COMPLETED") {
     return (
-      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
+      <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 mr-1.5" />
         COMPLETED
       </span>
     );
   }
-
   return (
-    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+    <span className="inline-flex items-center rounded-full border border-slate-600/50 bg-slate-700/30 px-2.5 py-1 text-xs font-semibold text-slate-300">
       {status}
     </span>
   );
@@ -48,6 +47,10 @@ function createIdempotencyKey() {
   }
   return `txn-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
+
+// Shared input class for dark theme
+const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all focus:border-brand-500/50 focus:ring-4 focus:ring-brand-500/10";
+const labelCls = "block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5";
 
 function Transfer() {
   const { addToast } = useNotificationStore();
@@ -83,7 +86,6 @@ function Transfer() {
         setLoadingAccounts(false);
       }
     };
-
     loadAccounts();
   }, []);
 
@@ -104,22 +106,12 @@ function Transfer() {
     if (numericAmount > MAX_PER_TXN) {
       setSubmitting(false);
       setWorkflowStatus("FAILED");
-      setError(
-        `Amount exceeds max per transaction (${formatMoney(MAX_PER_TXN)})`,
-      );
-      addToast({
-        type: "error",
-        title: "Transaction Failed",
-        message: `Max per transaction is ${formatMoney(MAX_PER_TXN)}`,
-      });
+      setError(`Amount exceeds max per transaction (${formatMoney(MAX_PER_TXN)})`);
+      addToast({ type: "error", title: "Transaction Failed", message: `Max per transaction is ${formatMoney(MAX_PER_TXN)}` });
       return;
     }
 
-    addToast({
-      type: "info",
-      title: "Transaction Processing",
-      message: "Your transfer request is being processed.",
-    });
+    addToast({ type: "info", title: "Transaction Processing", message: "Your transfer request is being processed." });
 
     try {
       const payload = {
@@ -150,179 +142,178 @@ function Transfer() {
       setIdempotencyKey(createIdempotencyKey());
 
       if (txStatus === "FAILED") {
-        addToast({
-          type: "error",
-          title: "Transaction Failed",
-          message:
-            tx.failureReason || response.data?.message || "Transfer failed",
-        });
+        addToast({ type: "error", title: "Transaction Failed", message: tx.failureReason || response.data?.message || "Transfer failed" });
       } else {
-        addToast({
-          type: "success",
-          title:
-            txStatus === "PROCESSING"
-              ? "Transaction Processing"
-              : "Transaction Completed",
-          message: response.data?.message || "Transfer successful",
-        });
+        addToast({ type: "success", title: txStatus === "PROCESSING" ? "Transaction Processing" : "Transaction Completed", message: response.data?.message || "Transfer successful" });
       }
     } catch (err) {
       setWorkflowStatus("FAILED");
       setError(err.response?.data?.message || err.message || "Transfer failed");
-      addToast({
-        type: "error",
-        title: "Transaction Failed",
-        message:
-          err.response?.data?.message || err.message || "Transfer failed",
-      });
+      addToast({ type: "error", title: "Transaction Failed", message: err.response?.data?.message || err.message || "Transfer failed" });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <section className="mx-auto max-w-2xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">
-          Transfer Money
-        </h1>
-        <p className="text-sm text-slate-500">Send money between accounts</p>
+    <section className="mx-auto max-w-xl animate-fade-in-up">
+      {/* Header */}
+      <div className="mb-8 text-center mt-4">
+        <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-brand-500/20 to-brand-600/20 border border-brand-500/30 flex items-center justify-center text-brand-400 mb-5 shadow-lg shadow-brand-500/10">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight text-white font-display">Transfer Funds</h1>
+        <p className="text-sm text-slate-500 mt-2">Send money securely from your dashboard</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="glass-panel p-8">
         {loadingAccounts ? (
-          <p className="text-sm text-slate-500">Loading accounts...</p>
+          <div className="animate-pulse space-y-4">
+            <div className="h-10 bg-white/5 rounded-xl" />
+            <div className="h-10 bg-white/5 rounded-xl" />
+            <div className="h-10 bg-white/5 rounded-xl" />
+          </div>
         ) : accounts.length === 0 ? (
-          <p className="text-sm text-slate-600">
-            Create an account from dashboard first.
-          </p>
+          <div className="text-center p-6 rounded-xl border border-white/10 bg-white/[0.02]">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto text-slate-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p className="text-sm font-semibold text-slate-300">No account available</p>
+            <p className="text-xs text-slate-500 mt-1">Please create an account from your dashboard first to enable transfers.</p>
+          </div>
         ) : (
-          <form onSubmit={onSubmit} className="space-y-4">
+          <form onSubmit={onSubmit} className="space-y-5">
+            {/* From Account */}
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                From Account
-              </label>
+              <label className={labelCls}>From Source Account</label>
               <select
                 name="fromAccount"
                 value={form.fromAccount}
                 onChange={onChange}
                 required
-                className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-blue-500"
+                className={`${inputCls} font-mono appearance-none`}
               >
                 {accounts.map((account) => (
-                  <option key={account._id} value={account._id}>
+                  <option key={account._id} value={account._id} className="bg-slate-900 text-slate-100">
                     {account._id}
                   </option>
                 ))}
               </select>
             </div>
 
+            {/* To Account */}
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Recipient Account Number
-              </label>
+              <label className={labelCls}>Recipient Target Account</label>
               <input
                 type="text"
                 name="toAccount"
                 value={form.toAccount}
                 onChange={onChange}
                 required
-                placeholder="Enter recipient account number"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-blue-500"
+                placeholder="24-character hexadecimal ID"
+                className={`${inputCls} font-mono`}
               />
             </div>
 
+            {/* Amount */}
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Amount
-              </label>
-              <input
-                type="number"
-                name="amount"
-                value={form.amount}
-                onChange={onChange}
-                min="1"
-                step="1"
-                required
-                className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-blue-500"
-              />
-              <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                <p>Max per txn: {formatMoney(MAX_PER_TXN)}</p>
+              <label className={labelCls}>Transfer Amount</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-500 font-semibold text-sm">₹</span>
+                <input
+                  type="number"
+                  name="amount"
+                  value={form.amount}
+                  onChange={onChange}
+                  min="1"
+                  step="1"
+                  required
+                  placeholder="0.00"
+                  className={`${inputCls} pl-8 font-mono text-lg font-semibold`}
+                />
+              </div>
+              <div className="flex justify-end mt-1">
+                <span className="text-[10px] font-semibold tracking-wide text-brand-400 bg-brand-500/10 border border-brand-500/20 px-2 py-0.5 rounded uppercase">
+                  Limit: {formatMoney(MAX_PER_TXN)}
+                </span>
               </div>
             </div>
 
+            {/* Note */}
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Note
+              <label className={labelCls}>
+                Note <span className="text-slate-600 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
                 name="note"
                 value={form.note}
                 onChange={onChange}
-                placeholder="Optional transfer note"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-blue-500"
+                placeholder="What is this transfer for?"
+                className={inputCls}
               />
             </div>
 
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm font-medium text-slate-700">Idempotency</p>
-              <p className="mt-1 text-xs text-slate-600">
-                A unique idempotency key is auto-generated for each transaction.
-              </p>
+            {/* Idempotency Status Banner */}
+            <div className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-4">
+              <div>
+                <p className="text-xs font-semibold text-slate-300">Idempotency Protection Active</p>
+                <p className="text-[10px] text-slate-600 mt-0.5">Duplicate requests are safely blocked</p>
+              </div>
+              <div>
+                {statusBadge(workflowStatus === "IDLE" ? "INITIATED" : workflowStatus)}
+              </div>
             </div>
 
-            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
-              <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">
-                System Feedback
-              </p>
-              {statusBadge(
-                workflowStatus === "IDLE" ? "INITIATED" : workflowStatus,
-              )}
-            </div>
-
+            {/* Error */}
             {error && (
-              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {error}
-              </div>
-            )}
-            {success && (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                {success}
+              <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm font-medium text-rose-300 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-rose-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span>{error}</span>
               </div>
             )}
 
+            {/* Success */}
+            {success && (
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm font-medium text-emerald-300 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                <span>{success}</span>
+              </div>
+            )}
+
+            {/* Submit */}
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
             >
               {submitting && (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
               )}
-              {submitting ? "Submitting Transfer..." : "Send Money"}
+              {submitting ? "Processing Transfer..." : "Confirm & Send Money"}
             </button>
 
+            {/* Transaction Meta */}
             {transactionMeta && (
-              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <p>
-                  <span className="font-medium">Transaction ID:</span>{" "}
-                  {transactionMeta.transactionId}
-                </p>
-                <p className="break-all">
-                  <span className="font-medium">Idempotency Key:</span>{" "}
+              <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 text-xs text-slate-400 space-y-1.5 font-mono">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-300">TXN Ref:</span>
+                  <span className="text-slate-400">{transactionMeta.transactionId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-300">Retry Counter:</span>
+                  <span>{transactionMeta.retryCount}/3</span>
+                </div>
+                <div className="flex flex-col mt-2 pt-2 border-t border-white/5 break-all text-[10px] text-slate-500">
+                  <span className="font-semibold text-slate-400 mb-0.5">Idempotency Key:</span>
                   {transactionMeta.idempotencyKey}
-                </p>
-                <p>
-                  <span className="font-medium">Retry:</span>{" "}
-                  {transactionMeta.retryCount}/3
-                </p>
+                </div>
                 {workflowStatus === "FAILED" && (
-                  <p>
-                    <span className="font-medium">Reason:</span>{" "}
-                    {transactionMeta.failureReason ||
-                      "No failure reason returned"}
-                  </p>
+                  <div className="mt-2 pt-2 border-t border-white/5 text-rose-400">
+                    <span className="font-semibold">Failure Reason:</span> {transactionMeta.failureReason || "N/A"}
+                  </div>
                 )}
               </div>
             )}

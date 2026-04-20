@@ -3,6 +3,7 @@ import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import Transfer from "./pages/Transfer";
 import Transactions from "./pages/Transactions";
@@ -14,9 +15,9 @@ import ToastContainer from "./components/ToastContainer";
 
 function AppLayout({ children }) {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen font-sans">
       <Navbar />
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 pb-16 pt-2 relative z-10">{children}</main>
     </div>
   );
 }
@@ -27,6 +28,13 @@ function App() {
   return (
     <>
       <Routes>
+        {/* Public homepage */}
+        <Route
+          path="/"
+          element={
+            isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />
+          }
+        />
         <Route
           path="/login"
           element={
@@ -109,7 +117,7 @@ function App() {
         <Route
           path="*"
           element={
-            <Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />
+            <Navigate to={isAuthenticated ? "/dashboard" : "/"} replace />
           }
         />
       </Routes>
