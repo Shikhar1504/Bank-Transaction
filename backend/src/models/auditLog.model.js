@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { AUDIT_STATUS } from "../utils/constants.js";
 
 const auditLogSchema = new mongoose.Schema(
   {
@@ -8,7 +9,7 @@ const auditLogSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["SUCCESS", "FAILED"],
+      enum: Object.values(AUDIT_STATUS),
       required: true,
     },
     userId: {

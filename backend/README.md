@@ -10,7 +10,7 @@ A Node.js, Express, and MongoDB banking backend implementing:
 - One account per user
 - Atomic transfer execution with MongoDB sessions
 - Double-entry immutable ledgering
-- Request-level idempotency via a dedicated TTL-backed key store, scoped per sender account to prevent duplicate request execution
+- Request-level idempotency enforced at the database level using a unique compound index on the transaction collection, scoped per sender account to prevent duplicate request execution
 - Transaction-level retry with bounded attempts and failure tracking
 - Event-driven transaction notifications
 - Audit logging for both success and failure paths
@@ -48,9 +48,15 @@ Financial systems fail in subtle ways under concurrency: duplicate payments, rac
 - Admin APIs allow controlled freezing and unfreezing of accounts
 - Transfer validation: ownership, status, and sufficient funds
 - Transaction state machine: INITIATED -> PROCESSING -> COMPLETED or FAILED
-- Controlled retry for failed transactions (max 3 attempts, triggered on subsequent valid requests)
+- Controlled retry for failed transactions (max 3 attempts)
 - Retry telemetry through retryCount and failureReason
-- Idempotency (request-level deduplication) and retry (transaction-level recovery) are intentionally decoupled to ensure correct system behavior
+- Idempotency is implemented using the **transaction collection itself**
+- Each transaction is uniquely identified by `{ idempotencyKey, fromAccount }`
+- A **unique index** prevents duplicate execution
+- If the same request is retried:
+  - COMPLETED → return existing transaction
+  - PROCESSING → reject as already processing
+  - FAILED → retry allowed (bounded)
 - System account supports controlled overdraft behavior for initial funding flows
 
 ### Ledger & History
@@ -88,13 +94,13 @@ Solution: MongoDB session transactions wrap all critical writes, with rollback o
 
 Problem: Network retries can replay the same transfer.
 
-Solution: Request-level idempotency keys are stored in a separate collection with TTL expiry, while transaction-level retries are controlled by state and retry limits.
+Solution: Idempotency is implemented using the **transaction collection itself**. Each transaction is uniquely identified by `{ idempotencyKey, fromAccount }`. A **unique index** prevents duplicate execution. If the same request is retried: COMPLETED → return existing transaction, PROCESSING → reject as already processing, FAILED → retry allowed (bounded).
 
 ### 4. Controlled Recovery from Transient Failures
 
 Problem: Failed transfers need safe retry without creating duplicate business operations.
 
-Solution: Failed transactions move through a bounded retry cycle using retryCount and failureReason, with a maximum of 3 attempts.
+Solution: Failed transactions move through a bounded retry cycle using retryCount and failureReason, with a maximum of 3 attempts. Retry is controlled using transaction status and retryCount, triggered only when previous transaction status = FAILED. No time-based lookup is used.
 
 ### 5. Auditability Without Data Drift
 
@@ -120,11 +126,16 @@ Solution: Ledger entries are immutable and every transfer outcome is written to 
 - Encodes retry metadata: retryCount and failureReason.
 - Uses state transitions to drive retry behavior safely.
 
-### Idempotency Store: Request De-duplication Layer
+### Idempotency: Request De-duplication Layer
 
-- Keys are persisted in a dedicated idempotency collection.
-- TTL index expires old keys automatically.
-- Protects against duplicate client request submission.
+- Idempotency is implemented using the **transaction collection itself**.
+- Each transaction is uniquely identified by `{ idempotencyKey, fromAccount }`.
+- A **unique index** prevents duplicate execution.
+- If the same request is retried:
+  - COMPLETED → return existing transaction
+  - PROCESSING → reject as already processing
+  - FAILED → retry allowed (bounded)
+- Idempotency is enforced at the database level using a unique compound index, ensuring correctness even under concurrent requests.
 
 ### Audit Log: Operational Observability Layer
 
@@ -138,6 +149,7 @@ Solution: Ledger entries are immutable and every transfer outcome is written to 
 ## 🔐 Security Highlights
 
 - JWT verification on protected routes
+- Strict runtime schema validation via Zod for all incoming payloads
 - Cookie security flags in production
 - Token blacklist to invalidate logged-out sessions
 - Ownership checks on account-scoped access
@@ -153,6 +165,7 @@ Solution: Ledger entries are immutable and every transfer outcome is written to 
 | Framework | Express 4             |
 | Database  | MongoDB               |
 | ODM       | Mongoose              |
+| Validation| Zod                   |
 | Auth      | JSON Web Tokens       |
 | Security  | bcrypt, cookie-parser |
 
@@ -199,7 +212,7 @@ State machine used by transfer processing:
 INITIATED → PROCESSING → COMPLETED
 INITIATED → PROCESSING → FAILED
 
-Failed transactions are eligible for controlled retry based on transaction state and retryCount, up to 3 total attempts, triggered on subsequent valid requests.
+Failed transactions are eligible for controlled retry based on transaction state and retryCount, up to 3 total attempts. Retry is controlled using transaction status and retryCount, triggered only when previous transaction status = FAILED. No time-based lookup is used.
 
 ## ⚡ Event Flow
 
@@ -260,7 +273,7 @@ Content-Type: application/json
 
 ## 🧩 Key Concepts
 
-- Idempotency: request-level duplicate submission protection via dedicated key store.
+- Idempotency: request-level duplicate submission protection implemented using the transaction collection itself along with a unique compound index.
 - Retry: transaction-level recovery flow for FAILED operations with bounded attempts.
 - Double-entry ledger: every movement is mirrored as DEBIT and CREDIT.
 - Atomic transactions: all writes commit together or all roll back.
@@ -278,14 +291,14 @@ Content-Type: application/json
 ### Idempotency
 
 - Explanation: Repeating the same request produces the same outcome instead of duplicate side effects.
-- In this project: Idempotency keys are stored in a dedicated collection with TTL expiration, scoped to request de-duplication.
-- Why it matters: Client/network replay does not execute duplicate transfers, and key storage remains bounded over time.
+- In this project: Idempotency is implemented using the **transaction collection itself**. Each transaction is uniquely identified by `{ idempotencyKey, fromAccount }`. Idempotency is enforced at the database level using a unique compound index, ensuring correctness even under concurrent requests.
+- Why it matters: Client/network replay returns the same outcome without executing duplicate transfers.
 
 ### Retry Mechanism
 
 - Explanation: Failed business operations are retried in a controlled, bounded manner.
-- In this project: Failed transactions re-enter PROCESSING based on transaction state with retryCount and failureReason, capped at 3 attempts.
-- Retry is limited to recent failed transactions using a time window to prevent unintended reuse of older operations.
+- In this project: Failed transactions re-enter PROCESSING based on transaction state with retryCount, capped at 3 attempts.
+- Retry is controlled using transaction status and retryCount, triggered only when previous transaction status = FAILED. No time-based lookup is used.
 - Why it matters: Improves resilience for transient failures without unbounded retries.
 
 ### Separation of Concerns (Idempotency vs Retry)
@@ -398,4 +411,4 @@ npm run dev
 
 ## 💼 Resume Snapshot
 
-Built a production-grade banking backend handling concurrency, fault tolerance, and financial data integrity using atomic transactions, state-driven retries, TTL-based idempotency, immutable double-entry ledgering, and event-driven architecture with audit logging and RBAC controls.
+Built a production-grade banking backend handling concurrency, fault tolerance, and financial data integrity using atomic transactions, state-driven retries, compound index-based idempotency, immutable double-entry ledgering, and event-driven architecture with audit logging and RBAC controls.

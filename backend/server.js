@@ -5,17 +5,25 @@ import "./src/events/notification.handler.js";
 
 dotenv.config();
 
+let server;
+
 process.on("uncaughtException", (err) => {
   console.error("Uncaught Exception:", err);
-  process.exit(1);
+  if (server) {
+    server.close(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
 });
 
 process.on("unhandledRejection", (err) => {
   console.error("Unhandled Rejection:", err);
-  process.exit(1);
+  if (server) {
+    server.close(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
 });
-
-let server;
 
 async function startServer() {
   try {

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { LEDGER_TYPE } from "../utils/constants.js";
 
 const ledgerSchema = new mongoose.Schema(
   {
@@ -24,7 +25,7 @@ const ledgerSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["DEBIT", "CREDIT"],
+      enum: Object.values(LEDGER_TYPE),
       required: true,
       immutable: true,
     },

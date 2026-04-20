@@ -1,0 +1,27 @@
+export const TRANSACTION_STATUS = {
+  INITIATED: "INITIATED",
+  PROCESSING: "PROCESSING",
+  COMPLETED: "COMPLETED",
+  FAILED: "FAILED",
+};
+
+export const ACCOUNT_STATUS = {
+  ACTIVE: "ACTIVE",
+  FROZEN: "FROZEN",
+  CLOSED: "CLOSED",
+};
+
+export const ROLES = {
+  USER: "USER",
+  ADMIN: "ADMIN",
+};
+
+export const LEDGER_TYPE = {
+  DEBIT: "DEBIT",
+  CREDIT: "CREDIT",
+};
+
+export const AUDIT_STATUS = {
+  SUCCESS: "SUCCESS",
+  FAILED: "FAILED",
+};

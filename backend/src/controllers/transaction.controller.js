@@ -3,29 +3,36 @@ import {
   processTransaction,
   processSystemTransaction,
 } from "../services/transaction.service.js";
-import accountModel from "../models/account.model.js"; // ✅ keep (used in history API)
-import ledgerModel from "../models/ledger.model.js"; // ✅ keep (used in history API)
+import accountModel from "../models/account.model.js";
+import ledgerModel from "../models/ledger.model.js";
+import { z } from "zod";
+import { LEDGER_TYPE } from "../utils/constants.js";
+
+const createTransactionSchema = z.object({
+  fromAccount: z.string().refine((val) => mongoose.Types.ObjectId.isValid(val), "Invalid fromAccount"),
+  toAccount: z.string().refine((val) => mongoose.Types.ObjectId.isValid(val), "Invalid toAccount"),
+  amount: z.number().positive("Amount must be greater than zero"),
+  idempotencyKey: z.string().min(1, "idempotencyKey is required"),
+  note: z.string().optional()
+});
+
+const initialFundsSchema = z.object({
+  toAccount: z.string().refine((val) => mongoose.Types.ObjectId.isValid(val), "Invalid toAccount"),
+  amount: z.number().positive("Amount must be greater than zero"),
+  idempotencyKey: z.string().min(1, "idempotencyKey is required"),
+  note: z.string().optional()
+});
 
 async function createTransaction(req, res) {
-  const { fromAccount, toAccount, amount, idempotencyKey, note } = req.body;
-
-  // ✅ Basic validation only
-  if (!fromAccount || !toAccount || !amount || !idempotencyKey) {
+  const validated = createTransactionSchema.safeParse(req.body);
+  if (!validated.success) {
     return res.status(400).json({
       success: false,
-      message: "All fields are required",
+      message: validated.error.issues[0].message,
     });
   }
 
-  if (
-    !mongoose.Types.ObjectId.isValid(fromAccount) ||
-    !mongoose.Types.ObjectId.isValid(toAccount)
-  ) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid account IDs",
-    });
-  }
+  const { fromAccount, toAccount, amount, idempotencyKey, note } = validated.data;
 
   if (fromAccount === toAccount) {
     return res.status(400).json({
@@ -58,21 +65,15 @@ async function createTransaction(req, res) {
 }
 
 async function createInitialFundsTransaction(req, res) {
-  const { toAccount, amount, idempotencyKey, note } = req.body;
-
-  if (!toAccount || !amount || !idempotencyKey) {
+  const validated = initialFundsSchema.safeParse(req.body);
+  if (!validated.success) {
     return res.status(400).json({
       success: false,
-      message: "All fields are required",
+      message: validated.error.issues[0].message,
     });
   }
 
-  if (!mongoose.Types.ObjectId.isValid(toAccount)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid account ID",
-    });
-  }
+  const { toAccount, amount, idempotencyKey, note } = validated.data;
 
   try {
     const transaction = await processSystemTransaction({
@@ -107,7 +108,6 @@ async function getTransactionHistoryController(req, res) {
       });
     }
 
-    // ✅ ownership check
     const account = await accountModel.findOne({
       _id: accountId,
       user: req.user._id,
@@ -135,10 +135,9 @@ async function getTransactionHistoryController(req, res) {
       })
       .lean();
 
-    // ✅ ADD HERE
     const formatted = transactions.map((tx) => ({
       ...tx,
-      direction: tx.type === "DEBIT" ? "OUT" : "IN",
+      direction: tx.type === LEDGER_TYPE.DEBIT ? "OUT" : "IN",
     }));
 
     const total = await ledgerModel.countDocuments({ account: accountId });
@@ -148,7 +147,7 @@ async function getTransactionHistoryController(req, res) {
       page,
       limit,
       total,
-      transactions: formatted, // ✅ use formatted
+      transactions: formatted,
     });
   } catch (error) {
     console.error(error);

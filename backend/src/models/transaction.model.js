@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { TRANSACTION_STATUS } from "../utils/constants.js";
 
 const transactionSchema = new mongoose.Schema(
   {
@@ -15,10 +16,10 @@ const transactionSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ["INITIATED", "PROCESSING", "COMPLETED", "FAILED"],
+        values: Object.values(TRANSACTION_STATUS),
         message: "Invalid status",
       },
-      default: "INITIATED",
+      default: TRANSACTION_STATUS.INITIATED,
     },
 
     retryCount: {

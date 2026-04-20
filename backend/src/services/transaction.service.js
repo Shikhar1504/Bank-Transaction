@@ -4,7 +4,12 @@ import accountModel from "../models/account.model.js";
 import auditLogModel from "../models/auditLog.model.js";
 import mongoose from "mongoose";
 import eventBus from "../events/eventBus.js";
-import idempotencyModel from "../models/idempotency.model.js";
+import {
+  TRANSACTION_STATUS,
+  ACCOUNT_STATUS,
+  LEDGER_TYPE,
+  AUDIT_STATUS,
+} from "../utils/constants.js";
 
 const MAX_PER_TXN = 10000;
 const MAX_RETRY = 3;
@@ -21,52 +26,36 @@ export async function processTransaction({
     throw new Error("Amount exceeds per transaction limit");
   }
 
-  let transaction;
-
-  // ✅ Idempotency
-  const existingKey = await idempotencyModel.findOne({
-    key: idempotencyKey,
+  let transaction = await transactionModel.findOne({
+    idempotencyKey,
     fromAccount,
   });
 
-  if (existingKey) {
-    throw new Error("Duplicate request");
-  }
-
-  // ✅ Retry logic (separate from idempotency)
-  const existingFailed = await transactionModel
-    .findOne({
-      fromAccount,
-      toAccount,
-      amount,
-      status: "FAILED",
-      createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) },
-    })
-    .sort({ createdAt: -1 });
-
-  if (existingFailed) {
-    if (existingFailed.retryCount >= MAX_RETRY) {
-      throw new Error("Retry limit exceeded");
+  if (transaction) {
+    if (transaction.status === TRANSACTION_STATUS.COMPLETED) {
+      return transaction;
+    }
+    if (transaction.status === TRANSACTION_STATUS.PROCESSING) {
+      throw new Error("Transaction is already processing");
     }
 
-    transaction = existingFailed;
-    transaction.status = "PROCESSING";
-    await transaction.save();
-  }
-
-  // ✅ Create if not exists
-  if (!transaction) {
+    if (transaction.status === TRANSACTION_STATUS.FAILED) {
+      if (transaction.retryCount >= MAX_RETRY) {
+        throw new Error("Retry limit exceeded");
+      }
+      transaction.status = TRANSACTION_STATUS.PROCESSING;
+      transaction.failureReason = null;
+      await transaction.save();
+    }
+  } else {
     transaction = await transactionModel.create({
       fromAccount,
       toAccount,
       amount,
       idempotencyKey,
       note,
-      status: "INITIATED",
+      status: TRANSACTION_STATUS.PROCESSING,
     });
-
-    transaction.status = "PROCESSING";
-    await transaction.save();
   }
 
   const session = await mongoose.startSession();
@@ -77,23 +66,21 @@ export async function processTransaction({
       {
         _id: fromAccount,
         user: userId,
-        status: "ACTIVE",
+        status: ACCOUNT_STATUS.ACTIVE,
         balance: { $gte: amount },
       },
       { $inc: { balance: -amount } },
-      { session, new: true },
+      { session, new: true }
     );
 
     if (!updatedFrom) {
-      throw new Error(
-        "Insufficient funds, unauthorized, or account not ACTIVE",
-      );
+      throw new Error("Insufficient funds, unauthorized, or account not ACTIVE");
     }
 
     const updatedTo = await accountModel.findOneAndUpdate(
-      { _id: toAccount, status: "ACTIVE" },
+      { _id: toAccount, status: ACCOUNT_STATUS.ACTIVE },
       { $inc: { balance: amount } },
-      { session, new: true },
+      { session, new: true }
     );
 
     if (!updatedTo) {
@@ -104,7 +91,7 @@ export async function processTransaction({
       [
         {
           account: fromAccount,
-          type: "DEBIT",
+          type: LEDGER_TYPE.DEBIT,
           amount,
           transaction: transaction._id,
           balanceAfter: updatedFrom.balance,
@@ -112,31 +99,26 @@ export async function processTransaction({
         },
         {
           account: toAccount,
-          type: "CREDIT",
+          type: LEDGER_TYPE.CREDIT,
           amount,
           transaction: transaction._id,
           balanceAfter: updatedTo.balance,
           currency: updatedTo.currency,
         },
       ],
-      { session, ordered: true },
+      { session, ordered: true }
     );
 
-    transaction.status = "COMPLETED";
+    transaction.status = TRANSACTION_STATUS.COMPLETED;
     transaction.failureReason = null;
     await transaction.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
-    await idempotencyModel.create({
-      key: idempotencyKey,
-      fromAccount,
-    });
-
     await auditLogModel.create({
       action: "TRANSFER_SUCCESS",
-      status: "SUCCESS",
+      status: AUDIT_STATUS.SUCCESS,
       userId,
       transactionId: transaction._id,
       details: "Transaction completed successfully",
@@ -155,7 +137,7 @@ export async function processTransaction({
     if (transaction) {
       await auditLogModel.create({
         action: "TRANSFER_FAILED",
-        status: "FAILED",
+        status: AUDIT_STATUS.FAILED,
         userId,
         transactionId: transaction._id,
         details: error.message,
@@ -166,7 +148,7 @@ export async function processTransaction({
         userId,
       });
 
-      transaction.status = "FAILED";
+      transaction.status = TRANSACTION_STATUS.FAILED;
       transaction.failureReason = error.message;
       transaction.retryCount += 1;
       await transaction.save();
@@ -193,50 +175,36 @@ export async function processSystemTransaction({
     throw new Error("System account not found");
   }
 
-  let transaction;
-
-  // ✅ Idempotency
-  const existingKey = await idempotencyModel.findOne({
-    key: idempotencyKey,
+  let transaction = await transactionModel.findOne({
+    idempotencyKey,
     fromAccount: systemAccount._id,
   });
 
-  if (existingKey) {
-    throw new Error("Duplicate request");
-  }
-
-  const existingFailed = await transactionModel
-    .findOne({
-      fromAccount: systemAccount._id,
-      toAccount,
-      amount,
-      status: "FAILED",
-      createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) },
-    })
-    .sort({ createdAt: -1 });
-
-  if (existingFailed) {
-    if (existingFailed.retryCount >= MAX_RETRY) {
-      throw new Error("Retry limit exceeded");
+  if (transaction) {
+    if (transaction.status === TRANSACTION_STATUS.COMPLETED) {
+      return transaction;
+    }
+    if (transaction.status === TRANSACTION_STATUS.PROCESSING) {
+      throw new Error("Transaction is already processing");
     }
 
-    transaction = existingFailed;
-    transaction.status = "PROCESSING";
-    await transaction.save();
-  }
-
-  if (!transaction) {
+    if (transaction.status === TRANSACTION_STATUS.FAILED) {
+      if (transaction.retryCount >= MAX_RETRY) {
+        throw new Error("Retry limit exceeded");
+      }
+      transaction.status = TRANSACTION_STATUS.PROCESSING;
+      transaction.failureReason = null;
+      await transaction.save();
+    }
+  } else {
     transaction = await transactionModel.create({
       fromAccount: systemAccount._id,
       toAccount,
       amount,
       idempotencyKey,
       note,
-      status: "INITIATED",
+      status: TRANSACTION_STATUS.PROCESSING,
     });
-
-    transaction.status = "PROCESSING";
-    await transaction.save();
   }
 
   const session = await mongoose.startSession();
@@ -246,18 +214,18 @@ export async function processSystemTransaction({
     const updatedFrom = await accountModel.findOneAndUpdate(
       {
         _id: systemAccount._id,
-        status: "ACTIVE",
+        status: ACCOUNT_STATUS.ACTIVE,
       },
       {
         $inc: { balance: -amount },
       },
-      { session, new: true },
+      { session, new: true }
     );
 
     const updatedTo = await accountModel.findOneAndUpdate(
-      { _id: toAccount, status: "ACTIVE" },
+      { _id: toAccount, status: ACCOUNT_STATUS.ACTIVE },
       { $inc: { balance: amount } },
-      { session, new: true },
+      { session, new: true }
     );
 
     if (!updatedFrom || !updatedTo) {
@@ -268,7 +236,7 @@ export async function processSystemTransaction({
       [
         {
           account: updatedFrom._id,
-          type: "DEBIT",
+          type: LEDGER_TYPE.DEBIT,
           amount,
           transaction: transaction._id,
           balanceAfter: updatedFrom.balance,
@@ -276,31 +244,26 @@ export async function processSystemTransaction({
         },
         {
           account: toAccount,
-          type: "CREDIT",
+          type: LEDGER_TYPE.CREDIT,
           amount,
           transaction: transaction._id,
           balanceAfter: updatedTo.balance,
           currency: updatedTo.currency,
         },
       ],
-      { session, ordered: true },
+      { session, ordered: true }
     );
 
-    transaction.status = "COMPLETED";
+    transaction.status = TRANSACTION_STATUS.COMPLETED;
     transaction.failureReason = null;
     await transaction.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
-    await idempotencyModel.create({
-      key: idempotencyKey,
-      fromAccount: systemAccount._id,
-    });
-
     await auditLogModel.create({
       action: "SYSTEM_TRANSFER_SUCCESS",
-      status: "SUCCESS",
+      status: AUDIT_STATUS.SUCCESS,
       userId,
       transactionId: transaction._id,
       details: "Initial funds transaction completed",
@@ -319,7 +282,7 @@ export async function processSystemTransaction({
     if (transaction) {
       await auditLogModel.create({
         action: "SYSTEM_TRANSFER_FAILED",
-        status: "FAILED",
+        status: AUDIT_STATUS.FAILED,
         userId,
         transactionId: transaction._id,
         details: error.message,
@@ -330,7 +293,7 @@ export async function processSystemTransaction({
         userId,
       });
 
-      transaction.status = "FAILED";
+      transaction.status = TRANSACTION_STATUS.FAILED;
       transaction.failureReason = error.message;
       transaction.retryCount += 1;
       await transaction.save();

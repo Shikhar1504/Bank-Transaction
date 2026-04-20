@@ -2,6 +2,7 @@ import accountModel from "../models/account.model.js";
 import userModel from "../models/user.model.js";
 import transactionModel from "../models/transaction.model.js";
 import mongoose from "mongoose";
+import { ACCOUNT_STATUS, TRANSACTION_STATUS } from "../utils/constants.js";
 
 export async function freezeAccount(req, res) {
   const { accountId } = req.params;
@@ -16,21 +17,21 @@ export async function freezeAccount(req, res) {
       });
     }
 
-    if (account.status === "FROZEN") {
+    if (account.status === ACCOUNT_STATUS.FROZEN) {
       return res.status(400).json({
         success: false,
         message: "Account already frozen",
       });
     }
 
-    if (account.status === "CLOSED") {
+    if (account.status === ACCOUNT_STATUS.CLOSED) {
       return res.status(400).json({
         success: false,
         message: "Cannot freeze closed account",
       });
     }
 
-    account.status = "FROZEN";
+    account.status = ACCOUNT_STATUS.FROZEN;
     await account.save();
 
     return res.status(200).json({
@@ -59,14 +60,14 @@ export async function unfreezeAccount(req, res) {
       });
     }
 
-    if (account.status !== "FROZEN") {
+    if (account.status !== ACCOUNT_STATUS.FROZEN) {
       return res.status(400).json({
         success: false,
         message: "Account is not frozen",
       });
     }
 
-    account.status = "ACTIVE";
+    account.status = ACCOUNT_STATUS.ACTIVE;
     await account.save();
 
     return res.status(200).json({
@@ -148,7 +149,7 @@ export async function getAllTransactions(req, res) {
     const filter = {};
 
     // ✅ validate status
-    const validStatuses = ["INITIATED", "PROCESSING", "COMPLETED", "FAILED"];
+    const validStatuses = Object.values(TRANSACTION_STATUS);
     if (status) {
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
@@ -186,7 +187,7 @@ export async function getAllTransactions(req, res) {
 
     const formatted = transactions.map((tx) => ({
       ...tx,
-      direction: tx.status === "FAILED" ? "FAILED" : "SUCCESS",
+      direction: tx.status === TRANSACTION_STATUS.FAILED ? "FAILED" : "SUCCESS",
       displayAmount: `₹${tx.amount}`,
     }));
 
@@ -212,12 +213,12 @@ export async function getAdminStats(req, res) {
     const totalUsers = await userModel.countDocuments();
     const totalTransactions = await transactionModel.countDocuments();
     const failedTransactions = await transactionModel.countDocuments({
-      status: "FAILED",
+      status: TRANSACTION_STATUS.FAILED,
     });
 
     const volume = await transactionModel.aggregate([
       {
-        $match: { status: "COMPLETED" },
+        $match: { status: TRANSACTION_STATUS.COMPLETED },
       },
       {
         $group: {

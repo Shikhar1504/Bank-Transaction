@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 // 🌍 Global limiter (for all APIs)
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: 300, // max 100 requests per IP
+  max: 400, // max 100 requests per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -15,7 +15,7 @@ export const apiLimiter = rateLimit({
 // 🔐 Strict limiter (for sensitive routes)
 export const strictLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30, // only 10 requests
+  max: 40, // only 10 requests
   message: {
     success: false,
     message: "Too many attempts, please slow down",

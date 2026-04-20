@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { ACCOUNT_STATUS } from "../utils/constants.js";
 
 const accountSchema = new mongoose.Schema(
   {
@@ -12,10 +13,10 @@ const accountSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ["ACTIVE", "FROZEN", "CLOSED"],
+        values: Object.values(ACCOUNT_STATUS),
         message: "Status must be either ACTIVE, FROZEN or CLOSED",
       },
-      default: "ACTIVE",
+      default: ACCOUNT_STATUS.ACTIVE,
     },
     currency: {
       type: String,

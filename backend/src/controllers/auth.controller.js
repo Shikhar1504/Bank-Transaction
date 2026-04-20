@@ -1,6 +1,18 @@
 import userModel from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import tokenBlacklistModel from "../models/blacklist.model.js";
+import { z } from "zod";
+
+const registerSchema = z.object({
+  email: z.string().email("Invalid email format"),
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters")
+});
+
+const loginSchema = z.object({
+  email: z.string().email("Invalid email"),
+  password: z.string().min(1, "Password is required")
+});
 
 function extractToken(req) {
   if (req.cookies.token) return req.cookies.token;
@@ -12,14 +24,15 @@ function extractToken(req) {
 
 async function userRegisterController(req, res) {
   try {
-    const { email, name, password } = req.body;
-
-    if (!email || !name || !password) {
+    const validated = registerSchema.safeParse(req.body);
+    if (!validated.success) {
       return res.status(400).json({
         success: false,
-        message: "All fields are required",
+        message: validated.error.issues[0].message,
       });
     }
+
+    const { email, name, password } = validated.data;
 
     const isExists = await userModel.findOne({ email });
     if (isExists) {
@@ -64,14 +77,15 @@ async function userRegisterController(req, res) {
 
 async function userLoginController(req, res) {
   try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
+    const validated = loginSchema.safeParse(req.body);
+    if (!validated.success) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message: validated.error.issues[0].message,
       });
     }
+
+    const { email, password } = validated.data;
 
     const user = await userModel.findOne({ email }).select("+password");
     if (!user) {
