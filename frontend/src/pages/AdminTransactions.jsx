@@ -13,7 +13,6 @@ function formatMoney(value) {
 
 function AdminTransactions() {
   const [transactions, setTransactions] = useState([]);
-  const [accountStateMap, setAccountStateMap] = useState({});
   const [selectedTx, setSelectedTx] = useState(null);
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
@@ -51,17 +50,6 @@ function AdminTransactions() {
       const list = response.data?.transactions || [];
       setTransactions(list);
       setTotal(response.data?.total || 0);
-
-      const nextStateMap = {};
-      list.forEach((tx) => {
-        if (tx.fromAccount?._id && tx.fromAccount?.status) {
-          nextStateMap[tx.fromAccount._id] = tx.fromAccount.status;
-        }
-        if (tx.toAccount?._id && tx.toAccount?.status) {
-          nextStateMap[tx.toAccount._id] = tx.toAccount.status;
-        }
-      });
-      setAccountStateMap(nextStateMap);
     } catch (err) {
       setError(
         err.response?.data?.message || "Failed to load admin transactions",
@@ -74,11 +62,6 @@ function AdminTransactions() {
   useEffect(() => {
     loadTransactions();
   }, [status, page, limit]);
-
-  const getAccountState = (account) => {
-    if (!account?._id) return null;
-    return accountStateMap[account._id] || account.status || "ACTIVE";
-  };
 
   const runAccountAction = async (type, accountId) => {
     if (!accountId) return;
@@ -95,12 +78,9 @@ function AdminTransactions() {
           : "Account unfrozen successfully");
 
       setActionNotice({ type: "success", message: successMessage });
-      setAccountStateMap((prev) => ({
-        ...prev,
-        [accountId]:
-          response.data?.account?.status ||
-          (type === "freeze" ? "FROZEN" : "ACTIVE"),
-      }));
+
+      // Reload transactions to sync with backend
+      await loadTransactions();
     } catch (err) {
       const apiMessage = err.response?.data?.message;
 
@@ -108,13 +88,6 @@ function AdminTransactions() {
         type: "error",
         message: apiMessage || "Action failed. Please try again",
       });
-
-      if (apiMessage?.toLowerCase().includes("already frozen")) {
-        setAccountStateMap((prev) => ({ ...prev, [accountId]: "FROZEN" }));
-      }
-      if (apiMessage?.toLowerCase().includes("not frozen")) {
-        setAccountStateMap((prev) => ({ ...prev, [accountId]: "ACTIVE" }));
-      }
     }
   };
 
@@ -303,8 +276,8 @@ function AdminTransactions() {
                 </tr>
               ) : (
                 transactions.map((tx) => {
-                  const fromState = getAccountState(tx.fromAccount);
-                  const toState = getAccountState(tx.toAccount);
+                  const fromState = tx.fromAccount?.status || "ACTIVE";
+                  const toState = tx.toAccount?.status || "ACTIVE";
                   return (
                     <tr
                       key={tx._id}
