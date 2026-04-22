@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../api/axios";
 import { useNotificationStore } from "../store/notificationStore";
 
@@ -80,6 +80,8 @@ const labelCls =
 
 function Transfer() {
   const { addToast } = useNotificationStore();
+  const isMountedRef = useRef(false);
+  const accountsRequestInFlightRef = useRef(false);
   const [accounts, setAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -107,25 +109,70 @@ function Transfer() {
   const retryAllowed = workflowStatus === "FAILED" && retryCount < 3;
   const retryKey = transactionMeta?.idempotencyKey || idempotencyKey;
 
-  useEffect(() => {
-    const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
+    if (accountsRequestInFlightRef.current) {
+      return;
+    }
+
+    accountsRequestInFlightRef.current = true;
+    if (isMountedRef.current) {
       setLoadingAccounts(true);
       setError("");
-      try {
-        const response = await api.get("/accounts");
-        const list = response.data?.accounts || [];
-        setAccounts(list);
-        if (list.length > 0) {
-          setForm((prev) => ({ ...prev, fromAccount: list[0]._id }));
+    }
+
+    try {
+      const response = await api.get("/accounts");
+      const list = response.data?.accounts || [];
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setAccounts(list);
+      setForm((prev) => {
+        if (list.length === 0) {
+          return prev;
         }
-      } catch (err) {
-        setError(err.response?.data?.message || "Failed to load accounts");
-      } finally {
+
+        const selectedAccountStillExists = list.some(
+          (account) => account._id === prev.fromAccount,
+        );
+
+        if (selectedAccountStillExists) {
+          return prev;
+        }
+
+        return { ...prev, fromAccount: list[0]._id };
+      });
+    } catch (err) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setError(err.response?.data?.message || "Failed to load accounts");
+    } finally {
+      accountsRequestInFlightRef.current = false;
+      if (isMountedRef.current) {
         setLoadingAccounts(false);
       }
-    };
-    loadAccounts();
+    }
   }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    loadAccounts();
+
+    const handleWindowFocus = () => {
+      loadAccounts();
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      isMountedRef.current = false;
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [loadAccounts]);
 
   const onChange = (event) => {
     const { name, value } = event.target;
@@ -229,6 +276,7 @@ function Transfer() {
           title: "Transaction Failed",
           message: failedCopy.toast,
         });
+        await loadAccounts();
       } else {
         setSuccess(response.data?.message || "Transfer successful");
         addToast({
@@ -256,6 +304,7 @@ function Transfer() {
           ? "Max retry attempts reached. Modify details and try again"
           : "Retry available",
       });
+      await loadAccounts();
     } finally {
       setSubmitting(false);
     }
