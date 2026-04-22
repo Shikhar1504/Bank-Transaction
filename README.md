@@ -415,7 +415,7 @@ Built a production-grade banking backend handling concurrency, fault tolerance, 
 
 ## 🖥️ Frontend (React Dashboard)
 
-This repository now includes a production-style frontend dashboard in the `frontend/` folder, built to visualize backend reliability signals clearly without changing backend contracts.
+This repository includes a React dashboard in the `frontend/` folder that mirrors backend transaction state and retry behavior without changing API contracts.
 
 ### Frontend Stack
 
@@ -436,18 +436,42 @@ This repository now includes a production-style frontend dashboard in the `front
   - Shortened account number with copy action
   - Recent transactions overview
 - Transfer flow:
-  - Idempotency-key based transaction submission
-  - Submit loading and status feedback
-  - Success/failure system feedback with toast notifications
+  - Idempotency-driven transaction submission:
+    - Generates a unique idempotencyKey per transaction intent
+    - Reuses the same key for retries to prevent duplicate execution
+  - State-driven transaction lifecycle UI:
+    - INITIATED -> PROCESSING -> COMPLETED / FAILED
+    - Visual status badges and loading indicators
+  - User-triggered retry mechanism:
+    - Retry button shown only for FAILED transactions
+    - Retries reuse the same idempotencyKey
+    - Backend-controlled retryCount governs retry eligibility
+  - Bounded retry handling:
+    - Maximum 3 retry attempts enforced
+    - UI disables retry and prompts user to modify request after limit is reached
+  - Account state enforcement:
+    - Transfers disabled for FROZEN or CLOSED accounts
+    - UI reflects backend business constraints before API call
+  - Input-driven intent reset:
+    - Changing amount or recipient generates a new idempotencyKey
+    - Ensures new transaction intent vs retry distinction
 - Transactions view:
   - Status-driven badges (INITIATED / PROCESSING / COMPLETED / FAILED)
   - Direction badges (IN / OUT)
-  - Retry and failure details when returned by API
+  - Retry metadata visibility:
+    - retryCount and failureReason displayed per transaction
+  - Clear distinction between retryable and permanently failed transactions
 - Admin panel:
   - Users listing with account status
   - Transaction monitoring with filters, retry/failure visibility, and details modal
   - Freeze/unfreeze account controls with state-driven actions
   - Admin stats view
+
+#### Frontend-Backend Consistency
+
+- Frontend strictly follows backend transaction state and retry rules
+- Idempotency and retry logic are not duplicated but respected via API responses
+- UI exposes system-level signals (status, retries, failure reasons) for transparency and debugging
 
 ### Frontend Folder Structure
 
