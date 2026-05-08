@@ -1,232 +1,301 @@
-# AegisLedger Core Banking API
+# AegisLedger -- Core Banking API
 
-Production-grade banking backend focused on safe money movement, reliability under failure, and operational observability.
+Production-grade banking backend and React dashboard focused on safe money movement, correctness under concurrency, and operational observability.
 
-## 📌 What This Is
+Built with Node.js, Express, MongoDB, and React. Deployed at [aegisledger.vercel.app](https://aegisledger.vercel.app).
 
-A Node.js, Express, and MongoDB banking backend implementing:
+---
 
-- JWT auth with cookie and Bearer support
-- One account per user
-- Atomic transfer execution with MongoDB sessions
-- Double-entry immutable ledgering
-- Request-level idempotency enforced at the database level using a unique compound index on the transaction collection, scoped per sender account to prevent duplicate request execution
-- Transaction-level retry with bounded attempts and failure tracking
-- Event-driven transaction notifications
-- Audit logging for both success and failure paths
-- Transaction and admin transaction APIs support pagination, filtering, sorting, and populated references
+## Table of Contents
 
-## 🌍 Why This Project Matters
+- [System Overview](#system-overview)
+- [Architecture](#architecture)
+- [Why This Is Not a CRUD App](#why-this-is-not-a-crud-app)
+- [How to Think About This System](#how-to-think-about-this-system)
+- [Core Backend Features](#core-backend-features)
+- [Engineering Challenges Solved](#engineering-challenges-solved)
+- [Security](#security)
+- [API Reference](#api-reference)
+- [Transaction Lifecycle](#transaction-lifecycle)
+- [Frontend Dashboard](#frontend-dashboard)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Run Locally](#run-locally)
+- [Future Improvements](#future-improvements)
 
-Financial systems fail in subtle ways under concurrency: duplicate payments, race-condition overdrafts, and inconsistent ledgers. This project is built to prevent those failures with explicit data integrity controls, making it a practical foundation for real-world fintech workloads.
+---
 
-- Prevents race-condition-based overdrafts using guarded atomic balance updates.
-- Ensures correctness under concurrent workloads and network retries.
+## System Overview
 
-## 🚀 Core Features
+When a transfer request arrives, the system executes the following pipeline:
 
-### Authentication & Access
+```
+1. Client submits POST /api/transactions with an idempotencyKey
+2. Zod validates the payload at the controller layer
+3. Service layer checks for an existing transaction with the same {idempotencyKey, fromAccount}
+   - If COMPLETED: returns the existing result (idempotent replay)
+   - If PROCESSING: rejects as duplicate-in-flight
+   - If FAILED and retryCount < 3: re-enters PROCESSING for retry
+   - If no match: creates a new transaction record in PROCESSING state
+4. MongoDB session transaction begins (all-or-nothing):
+   a. Atomic debit on sender: findOneAndUpdate with { balance: { $gte: amount } } guard
+   b. Atomic credit on receiver
+   c. Two immutable ledger entries created (DEBIT + CREDIT)
+   d. Transaction status set to COMPLETED
+   e. Session committed
+5. Audit log persisted (success or failure)
+6. Domain event emitted: transaction.completed or transaction.failed
+7. Notification handler consumes the event asynchronously
+```
 
-- Register, login, logout
-- JWT issuance with HttpOnly cookie
-- Bearer token fallback
-- Logout token blacklisting with TTL expiry
-- System-only funding endpoint guarded by role middleware
-- RBAC with USER and ADMIN roles
-- Admin APIs for:
-  - Account freeze and unfreeze with state validation
-  - Paginated user listing with safe field selection
-  - Filterable and paginated transaction inspection
-  - System-level transaction statistics (volume, failures, totals)
+On any failure within the session, the entire transaction is rolled back, the transaction record is marked FAILED with a `failureReason`, `retryCount` is incremented, and the failure is audit-logged.
 
-### Account & Money Movement
+---
 
-- One-account-per-user enforced via unique index
-- Balance updates via atomic inc operations
-- Account status enforcement: ACTIVE / FROZEN / CLOSED
-- Transactions are blocked for non-ACTIVE accounts
-- Admin APIs allow controlled freezing and unfreezing of accounts
-- Transfer validation: ownership, status, and sufficient funds
-- Transaction state machine: INITIATED -> PROCESSING -> COMPLETED or FAILED
-- Controlled retry for failed transactions (max 3 attempts)
-- Retry telemetry through retryCount and failureReason
-- Idempotency is implemented using the **transaction collection itself**
+## Architecture
+
+```
+                                 +------------------+
+                                 |     Client       |
+                                 | (React Dashboard)|
+                                 +--------+---------+
+                                          |
+                                    POST /api/transactions
+                                          |
+                              +-----------v-----------+
+                              |     Express API       |
+                              |  Zod Validation       |
+                              |  Rate Limiting        |
+                              |  JWT Auth Middleware   |
+                              +-----------+-----------+
+                                          |
+                              +-----------v-----------+
+                              |    Service Layer      |
+                              |  (transaction.service)|
+                              +-----------+-----------+
+                                          |
+                     +--------------------+--------------------+
+                     |                    |                    |
+              +------v------+    +-------v-------+    +------v------+
+              |   Accounts  |    | Transactions  |    |   Ledger    |
+              |   (balance  |    | (state, retry |    | (immutable  |
+              |   source of |    |  idempotency) |    |  DEBIT /    |
+              |   truth)    |    |               |    |  CREDIT)    |
+              +-------------+    +---------------+    +-------------+
+                                          |
+                     +--------------------+--------------------+
+                     |                                         |
+              +------v------+                          +-------v-------+
+              |  Audit Log  |                          |   Event Bus   |
+              | (success /  |                          | (EventEmitter)|
+              |  failure)   |                          +-------+-------+
+              +-------------+                                  |
+                                                       +-------v-------+
+                                                       | Notification  |
+                                                       |   Handler     |
+                                                       +---------------+
+```
+
+---
+
+## Why This Is Not a CRUD App
+
+Most project backends are simple read/write wrappers around a database. This system solves problems that only surface under real-world conditions:
+
+| Concern | How It Is Handled |
+|---|---|
+| **Concurrent overdrafts** | Guarded atomic update: `findOneAndUpdate` with `{ balance: { $gte: amount } }` and `$inc` in a single write, inside a MongoDB session. Two parallel debits cannot both succeed if funds are insufficient. |
+| **Duplicate charges on retry** | Unique compound index on `{ idempotencyKey, fromAccount }` in the transaction collection. Duplicate inserts throw a constraint violation at the database level, not in application code. |
+| **Partial writes** | All critical mutations (debit, credit, ledger, status update) are wrapped in a MongoDB multi-document session transaction. Any failure aborts the entire batch. |
+| **Uncontrolled retries** | Failed transactions track `retryCount` and `failureReason`. Retries are bounded at 3 attempts and are state-driven (only FAILED transactions can be retried). |
+| **Mutable audit history** | Ledger entries are append-only. All fields are marked `immutable` in the Mongoose schema, and `pre` hooks block `update`, `delete`, `remove`, `findOneAndUpdate`, `findOneAndDelete`, `updateMany`, `deleteMany`, and `findOneAndReplace`. |
+| **Tight coupling of side effects** | Transaction completion/failure emits domain events via a Node.js `EventEmitter`. Notification handling is a decoupled listener, not inline code. |
+
+---
+
+## How to Think About This System
+
+Understanding the data model clarifies every design decision:
+
+**Account** = Source of truth for spendable balance. `account.balance` is the real-time value used for transfer authorization. Modified only via guarded atomic `$inc` operations.
+
+**Transaction** = Business event record. Captures transfer intent, lifecycle state (`INITIATED -> PROCESSING -> COMPLETED | FAILED`), retry metadata (`retryCount`, `failureReason`), and the `idempotencyKey` used for deduplication.
+
+**Ledger** = Immutable audit trail. Every completed transfer produces exactly two entries: one DEBIT (sender) and one CREDIT (receiver), each recording the `balanceAfter` at the time of posting. The ledger is never the source of truth for balance -- it exists for reconciliation, forensics, and compliance.
+
+**Audit Log** = Operational observability layer. Records every transfer outcome (success or failure) with user and transaction linkage, independent of the ledger.
+
+---
+
+## Core Backend Features
+
+### Authentication and Authorization
+
+- JWT issuance on register/login, delivered via HttpOnly cookie with secure flags in production
+- Bearer token fallback for non-browser clients
+- Token blacklisting on logout with a 3-day TTL auto-expiry index
+- RBAC with two roles: `USER` and `ADMIN`
+- System-user middleware for privileged funding endpoints (immutable `systemUser` flag on user model)
+- Admin middleware guards all `/admin/*` routes
+
+### Account Management
+
+- One account per user, enforced by a unique index on `user`
+- Account status state machine: `ACTIVE`, `FROZEN`, `CLOSED`
+- Transfers are blocked for any non-ACTIVE account (enforced in the service layer query filter)
+- Admin-only freeze and unfreeze with state validation (cannot freeze an already-frozen account, cannot freeze a closed account)
+- Default currency: INR
+
+### Money Movement
+
+- Per-transaction amount cap of 10,000 (enforced in the service layer)
+- Self-transfer prevention via a Mongoose `pre("validate")` hook
+- Sender debit uses a guarded atomic update: balance check and decrement in a single `findOneAndUpdate`
+- Receiver credit via atomic `$inc`
+- System account funding flow with controlled overdraft behavior (no balance floor check on system account debit)
+
+### Idempotency
+
+Idempotency is enforced at the database level using the transaction collection itself:
+
 - Each transaction is uniquely identified by `{ idempotencyKey, fromAccount }`
-- A **unique index** prevents duplicate execution
-- If the same request is retried:
-  - COMPLETED → return existing transaction
-  - PROCESSING → reject as already processing
-  - FAILED → retry allowed (bounded)
-- System account supports controlled overdraft behavior for initial funding flows
+- A unique compound index prevents duplicate creation, even under concurrent requests
+- Replay behavior by state:
+  - `COMPLETED` -- return the existing transaction (safe replay)
+  - `PROCESSING` -- reject with "already processing" (prevents double-execution)
+  - `FAILED` with `retryCount < 3` -- re-enter PROCESSING for a bounded retry
 
-### Ledger & History
+No separate idempotency table or cache is needed. The transaction record itself is the deduplication mechanism.
 
-- Double-entry postings: one DEBIT + one CREDIT per transfer
-- Ledger documents are immutable
-- Transaction and admin transaction APIs support:
-  - Pagination (page, limit, hasNextPage)
-  - Filtering by status and account
-  - Sorted retrieval (latest first)
-  - Populated account references for API usability
-- Audit log collection records transfer success and failure outcomes
+### Retry Logic
+
+Failed transactions support bounded, state-driven retries:
+
+- Maximum 3 attempts, tracked via `retryCount`
+- Retry is triggered only when the existing transaction status is `FAILED`
+- Each retry reuses the same `idempotencyKey`, ensuring deduplication continuity
+- `failureReason` is cleared on retry entry and set on subsequent failure
+- No time-based polling or cron jobs -- retries are user-initiated via the same API endpoint
+
+### Double-Entry Ledger
+
+- Every completed transfer creates exactly two ledger entries: one DEBIT, one CREDIT
+- Each entry records: `account`, `amount`, `type`, `transaction` (linkage), `balanceAfter`, `currency`
+- All fields are `immutable` at the schema level
+- Mongoose pre-hooks block all update and delete operations on ledger documents
+- Composite indexes on `{ account, transaction }` and `{ account, createdAt }` for efficient queries
 
 ### Event-Driven Processing
 
-- Domain events emitted after transaction outcomes
-- transaction.completed and transaction.failed events are handled by decoupled listeners
-- Notification flow is isolated from core transfer execution
+- `transaction.completed` and `transaction.failed` events emitted from the service layer after session commit/abort
+- Events are consumed by a notification handler registered at server startup
+- Side effects are fully decoupled from core transfer execution
 
-## 🧠 Engineering Challenges Solved
+### Audit Logging
 
-### 1. Race Conditions During Concurrent Transfers
+- Separate `auditLog` collection with `action`, `status`, `userId`, `transactionId`, and `details`
+- Both success (`TRANSFER_SUCCESS`, `SYSTEM_TRANSFER_SUCCESS`) and failure (`TRANSFER_FAILED`, `SYSTEM_TRANSFER_FAILED`) paths are logged
+- Independent of the ledger -- the audit log captures operational metadata, not accounting entries
 
-Problem: Parallel debits can overdraw accounts.
+### Pagination and Filtering
 
-Solution: Guarded atomic update on sender account with balance check and inc in the same write path.
+- Transaction history and admin listing endpoints support `page`, `limit`, and `hasNextPage`
+- Limit is capped at 50 per request
+- Admin transaction listing supports filtering by `status` and `accountId`
+- Results are sorted by `createdAt` descending
+- Populated account references for frontend-ready responses
+- Internal fields (`__v`, `idempotencyKey`) excluded from admin responses
 
-### 2. Consistency Across Multi-Document Writes
+---
 
-Problem: Partial success can desync balances, transactions, and ledger.
+## Engineering Challenges Solved
 
-Solution: MongoDB session transactions wrap all critical writes, with rollback on any failure.
+### 1. Race-Condition Overdrafts
 
-### 3. Duplicate Charges on Retries
+**Problem:** Two parallel transfers from the same account can both read a sufficient balance, then both debit, resulting in a negative balance.
 
-Problem: Network retries can replay the same transfer.
+**Solution:** The sender debit is a single `findOneAndUpdate` with a query filter `{ balance: { $gte: amount } }` and an update of `{ $inc: { balance: -amount } }`. This is atomic at the MongoDB document level. If the balance is insufficient at write time, the update returns `null` and the transfer is rejected. Combined with a MongoDB session, this prevents any interleaving that could produce an overdraft.
 
-Solution: Idempotency is implemented using the **transaction collection itself**. Each transaction is uniquely identified by `{ idempotencyKey, fromAccount }`. A **unique index** prevents duplicate execution. If the same request is retried: COMPLETED → return existing transaction, PROCESSING → reject as already processing, FAILED → retry allowed (bounded).
+### 2. Multi-Document Consistency
 
-### 4. Controlled Recovery from Transient Failures
+**Problem:** A transfer involves four writes: sender balance, receiver balance, two ledger entries, and a transaction status update. A crash between any of these creates an inconsistent state.
 
-Problem: Failed transfers need safe retry without creating duplicate business operations.
+**Solution:** All writes are wrapped in a MongoDB multi-document session transaction. On any failure, `session.abortTransaction()` rolls back every mutation atomically.
 
-Solution: Failed transactions move through a bounded retry cycle using retryCount and failureReason, with a maximum of 3 attempts. Retry is controlled using transaction status and retryCount, triggered only when previous transaction status = FAILED. No time-based lookup is used.
+### 3. Duplicate Charges on Network Retry
 
-### 5. Auditability Without Data Drift
+**Problem:** A client retries a request after a timeout, but the original request already succeeded. Without protection, the transfer executes twice.
 
-Problem: Mutable history breaks forensic trust.
+**Solution:** The unique compound index `{ idempotencyKey, fromAccount }` on the transaction collection makes duplicate creation impossible at the database level. The service layer checks the existing transaction state and returns the appropriate response.
 
-Solution: Ledger entries are immutable and every transfer outcome is written to a dedicated audit log collection.
+### 4. Safe Recovery from Transient Failures
 
-## 🏗️ Architecture Overview
+**Problem:** A transfer fails due to a transient issue (e.g., destination account temporarily frozen). The user should be able to retry without creating a new business operation.
 
-### Account: Balance Source of Truth
+**Solution:** The client retries with the same `idempotencyKey`. The service finds the existing FAILED transaction, verifies `retryCount < 3`, transitions it back to PROCESSING, and re-executes the transfer logic. This is the same code path as idempotent replay, differentiated by status.
 
-- account.balance is the real-time spendable amount.
-- Transfers modify balances atomically using inc operations.
+### 5. Immutable Financial History
 
-### Ledger: Immutable Audit Trail
+**Problem:** If ledger entries can be modified, post-hoc reconciliation and audit are unreliable.
 
-- Every transfer creates balanced DEBIT/CREDIT entries.
-- Ledger rows store transaction linkage and post-transaction balance.
+**Solution:** Every field on the ledger schema is marked `immutable`. Mongoose pre-hooks on eight different operations (`findOneAndUpdate`, `updateOne`, `deleteOne`, `deleteMany`, `remove`, `updateMany`, `findOneAndDelete`, `findOneAndReplace`) throw an error if any code attempts to modify or delete a ledger entry.
 
-### Transaction: Business Event Record
+---
 
-- Captures transfer intent and lifecycle state.
-- Encodes retry metadata: retryCount and failureReason.
-- Uses state transitions to drive retry behavior safely.
+## Security
 
-### Idempotency: Request De-duplication Layer
+| Layer | Implementation |
+|---|---|
+| **Authentication** | JWT with 3-day expiry, issued via HttpOnly cookie (`secure` and `sameSite` flags in production) with Bearer fallback |
+| **Token Revocation** | Logout persists the token to a blacklist collection with a TTL index (auto-expires after 3 days) |
+| **Input Validation** | All incoming payloads validated with Zod schemas before reaching business logic |
+| **Password Storage** | bcrypt with 10 salt rounds, `select: false` on the password field |
+| **Ownership Enforcement** | Account-scoped queries always include `user: req.user._id` in the filter |
+| **Role-Based Access** | Admin middleware checks `req.user.role === ADMIN`; system-user middleware checks the immutable `systemUser` flag |
+| **Rate Limiting** | Global limiter: 500 requests per 15 minutes per IP. Strict limiter on auth, transaction, and admin routes: 50 requests per 15 minutes |
+| **Error Masking** | Production error responses return "Internal Server Error" instead of stack traces |
 
-- Idempotency is implemented using the **transaction collection itself**.
-- Each transaction is uniquely identified by `{ idempotencyKey, fromAccount }`.
-- A **unique index** prevents duplicate execution.
-- If the same request is retried:
-  - COMPLETED → return existing transaction
-  - PROCESSING → reject as already processing
-  - FAILED → retry allowed (bounded)
-- Idempotency is enforced at the database level using a unique compound index, ensuring correctness even under concurrent requests.
+---
 
-### Audit Log: Operational Observability Layer
+## API Reference
 
-- Success and failure events are recorded in an independent collection.
-- Links user and transaction metadata for traceability.
+Base URL: `http://localhost:3000/api`
 
-### Clean Service Boundaries
+### Public
 
-- Controller -> Service -> Model flow keeps orchestration, business logic, and persistence concerns separated.
+| Method | Route | Purpose |
+|---|---|---|
+| POST | `/auth/register` | Register user, issue JWT |
+| POST | `/auth/login` | Authenticate user, issue JWT |
 
-## 🔐 Security Highlights
+### Authenticated (User)
 
-- JWT verification on protected routes
-- Strict runtime schema validation via Zod for all incoming payloads
-- Cookie security flags in production
-- Token blacklist to invalidate logged-out sessions
-- Ownership checks on account-scoped access
-- System-user role check for privileged flows
-- Admin role enforcement for operational endpoints
-- Strict rate limiting on sensitive transaction and admin APIs
+| Method | Route | Purpose |
+|---|---|---|
+| POST | `/auth/logout` | Blacklist token, clear cookie |
+| POST | `/accounts` | Create account (one per user) |
+| GET | `/accounts` | List user's accounts |
+| GET | `/accounts/balance/:accountId` | Get balance for owned account |
+| POST | `/transactions` | Create idempotent transfer with retry support |
+| GET | `/transactions/:accountId?page=1&limit=10` | Paginated transaction history via ledger |
 
-## ⚙️ Tech Stack
+### System User
 
-| Layer      | Technology            |
-| ---------- | --------------------- |
-| Runtime    | Node.js               |
-| Framework  | Express 4             |
-| Database   | MongoDB               |
-| ODM        | Mongoose              |
-| Validation | Zod                   |
-| Auth       | JSON Web Tokens       |
-| Security   | bcrypt, cookie-parser |
+| Method | Route | Purpose |
+|---|---|---|
+| POST | `/transactions/system/initial-funds` | Fund account from system account |
 
-## 📁 Project Structure
+### Admin
 
-```text
-.
-├─ server.js
-├─ package.json
-└─ src/
-   ├─ app.js
-   ├─ config/db.js
-   ├─ controllers/
-   ├─ middleware/
-   ├─ models/
-   └─ routes/
-```
+| Method | Route | Purpose |
+|---|---|---|
+| PATCH | `/admin/freeze/:accountId` | Freeze a user account |
+| PATCH | `/admin/unfreeze/:accountId` | Unfreeze a frozen account |
+| GET | `/admin/users` | Paginated user listing with account status |
+| GET | `/admin/transactions` | Filterable, paginated transaction inspection |
+| GET | `/admin/stats` | System metrics: users, transactions, volume, failures |
 
-## 🔌 API Endpoints
-
-Base URL: http://localhost:3000/api
-
-| Method | Route                                    | Access      | Purpose                                                      |
-| ------ | ---------------------------------------- | ----------- | ------------------------------------------------------------ |
-| POST   | /auth/register                           | Public      | Register user and issue auth token                           |
-| POST   | /auth/login                              | Public      | Authenticate user and issue auth token                       |
-| POST   | /auth/logout                             | User        | Blacklist token and clear cookie                             |
-| POST   | /accounts                                | User        | Create account (one per user)                                |
-| GET    | /accounts                                | User        | List authenticated user accounts                             |
-| GET    | /accounts/balance/:accountId             | User        | Get balance for owned account                                |
-| POST   | /transactions                            | User        | Create idempotent transfer with retry support                |
-| POST   | /transactions/system/initial-funds       | System User | Transfer funds from system account                           |
-| GET    | /transactions/:accountId?page=1&limit=10 | User        | Transaction history with pagination and populated references |
-| PATCH  | /admin/freeze/:accountId                 | Admin       | Freeze a user account                                        |
-| PATCH  | /admin/unfreeze/:accountId               | Admin       | Unfreeze a user account                                      |
-| GET    | /admin/users                             | Admin       | View all users with safe field selection                     |
-| GET    | /admin/transactions                      | Admin       | Filterable, paginated transaction inspection                 |
-| GET    | /admin/stats                             | Admin       | View system metrics (users, transactions, volume)            |
-
-## 🔄 Transaction Lifecycle
-
-State machine used by transfer processing:
-
-INITIATED → PROCESSING → COMPLETED
-INITIATED → PROCESSING → FAILED
-
-Failed transactions are eligible for controlled retry based on transaction state and retryCount, up to 3 total attempts. Retry is controlled using transaction status and retryCount, triggered only when previous transaction status = FAILED. No time-based lookup is used.
-
-## ⚡ Event Flow
-
-1. Service completes or fails a transaction.
-2. Domain event is emitted on the event bus:
-
-- transaction.completed
-- transaction.failed
-
-3. Notification handlers consume events in a decoupled path.
-4. Audit records preserve outcome-level traceability.
-5. This decoupling allows side effects to evolve independently without modifying core transaction logic.
-
-## 📊 Example Request and Response
+### Example: Create Transfer
 
 ```http
 POST /api/transactions
@@ -245,13 +314,17 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "message": "Transaction completed successfully",
+  "message": "Transaction processed",
   "transaction": {
     "status": "COMPLETED",
-    "amount": 1500
+    "amount": 1500,
+    "retryCount": 0,
+    "failureReason": null
   }
 }
 ```
+
+### Example: Paginated History
 
 ```json
 {
@@ -259,127 +332,184 @@ Content-Type: application/json
   "page": 1,
   "limit": 10,
   "total": 25,
-  "hasNextPage": true,
-  "transactions": []
+  "transactions": [
+    {
+      "type": "DEBIT",
+      "amount": 1500,
+      "direction": "OUT",
+      "balanceAfter": 3500,
+      "transaction": {
+        "note": "Wallet top-up",
+        "status": "COMPLETED"
+      }
+    }
+  ]
 }
 ```
 
-## 📦 API Response Design
+---
 
-- Consistent response shape with a success flag
-- Pagination metadata: page, limit, total, hasNextPage
-- Clean payloads with internal fields excluded (\_\_v, idempotencyKey)
-- Populated references for frontend-ready responses
+## Transaction Lifecycle
 
-## 🧩 Key Concepts
+```
+   INITIATED
+       |
+       v
+   PROCESSING ----------+
+       |                 |
+       v                 v
+   COMPLETED          FAILED
+                         |
+                   retryCount < 3?
+                    /          \
+                  yes           no
+                   |             |
+                   v             v
+              PROCESSING    Terminal failure
+                   |         (retry limit
+                   v          exceeded)
+            COMPLETED / FAILED
+```
 
-- Idempotency: request-level duplicate submission protection implemented using the transaction collection itself along with a unique compound index.
-- Retry: transaction-level recovery flow for FAILED operations with bounded attempts.
-- Double-entry ledger: every movement is mirrored as DEBIT and CREDIT.
-- Atomic transactions: all writes commit together or all roll back.
-- Event-driven processing: domain events decouple core transfer logic from side effects.
-- Auditability: explicit success/failure logs improve observability and incident analysis.
+- New transactions are created directly in `PROCESSING` state
+- `INITIATED` exists in the schema but is used primarily as a UI display state
+- Failed transactions track `retryCount` (incremented on each failure) and `failureReason`
+- Retry re-enters `PROCESSING`, clears `failureReason`, and re-executes the full transfer pipeline
 
-## 🧠 System Design Concepts Used
+---
 
-### Atomic Transactions
+## Frontend Dashboard
 
-- Explanation: Multiple related writes are treated as one all-or-nothing unit.
-- In this project: Transfer execution wraps transaction record creation, balance updates, and ledger inserts inside MongoDB session transactions.
-- Why it matters: Prevents partial commits where money moves but history or status does not, which is critical for financial correctness.
+The `frontend/` directory contains a React dashboard that mirrors backend transaction state and retry behavior.
 
-### Idempotency
+### Stack
 
-- Explanation: Repeating the same request produces the same outcome instead of duplicate side effects.
-- In this project: Idempotency is implemented using the **transaction collection itself**. Each transaction is uniquely identified by `{ idempotencyKey, fromAccount }`. Idempotency is enforced at the database level using a unique compound index, ensuring correctness even under concurrent requests.
-- Why it matters: Client/network replay returns the same outcome without executing duplicate transfers.
+React 18 (Vite), Tailwind CSS, Axios, React Router 6, Zustand
 
-### Retry Mechanism
+### Key Design Decisions
 
-- Explanation: Failed business operations are retried in a controlled, bounded manner.
-- In this project: Failed transactions re-enter PROCESSING based on transaction state with retryCount, capped at 3 attempts.
-- Retry is controlled using transaction status and retryCount, triggered only when previous transaction status = FAILED. No time-based lookup is used.
-- Why it matters: Improves resilience for transient failures without unbounded retries.
+**State-driven UI:** The frontend renders transaction status (`INITIATED`, `PROCESSING`, `COMPLETED`, `FAILED`) using color-coded badges with distinct visual treatments (spinner for PROCESSING, dot indicators for terminal states). Account status (`ACTIVE`, `FROZEN`) controls whether the transfer form is enabled or disabled.
 
-### Separation of Concerns (Idempotency vs Retry)
+**Idempotency-aware transfers:** The Transfer page generates a `crypto.randomUUID()` as the `idempotencyKey` for each new transaction intent. Changing the amount or recipient generates a new key. Retries reuse the same key, ensuring the backend correctly identifies them as retries rather than new transactions.
 
-- Explanation: Request de-duplication and business-operation retry solve different failure classes.
-- In this project: Idempotency prevents duplicate submissions; retry manages failed transaction execution state.
-- Why it matters: Avoids mixing client replay control with internal recovery logic, improving correctness and debuggability.
+**Bounded retry handling:** The retry button appears only for FAILED transactions with `retryCount < 3`. After 3 attempts, the UI disables retry and instructs the user to modify their request. The frontend displays `retryCount`, `failureReason`, and the `idempotencyKey` for full diagnostic transparency.
 
-### Double-Entry Ledger System
+**Automatic session management:** Axios interceptors attach Bearer tokens to requests and redirect to `/login` on 401 responses. Auth state is persisted in `localStorage` via Zustand.
 
-- Explanation: Every value transfer is recorded as equal and opposite entries.
-- In this project: Each completed transfer writes one DEBIT and one CREDIT ledger row linked to the same business transaction.
-- Why it matters: Preserves accounting integrity and simplifies reconciliation.
+### Pages
 
-### Source of Truth Pattern
+| Page | Purpose |
+|---|---|
+| Dashboard | Virtual card with live balance, account status, recent transactions with direction badges |
+| Transfer | Idempotent transfer form with retry workflow, account status enforcement, transaction metadata display |
+| Transactions | Full transaction history with status badges, direction indicators, retry metadata |
+| Admin Users | Paginated user listing with account status, freeze/unfreeze controls |
+| Admin Transactions | Filterable transaction inspection with details modal showing retry count, failure reason, and idempotency key |
+| Admin Stats | System-level metrics: total users, transactions, failures, volume |
 
-- Explanation: One canonical field is used for real-time operational decisions.
-- In this project: Account balance is the spendable source of truth; ledger is the immutable audit layer.
-- Why it matters: Reads stay fast and deterministic while auditability remains intact.
+---
 
-### Race Condition Handling
+## Tech Stack
 
-- Explanation: Concurrent requests are controlled so shared state cannot be corrupted.
-- In this project: Sender debit uses guarded atomic updates with sufficient-funds checks in the same write path, plus transaction boundaries.
-- Why it matters: Prevents overdrafts and inconsistent balances under high concurrency.
+| Layer | Technology | Version |
+|---|---|---|
+| Runtime | Node.js | -- |
+| Framework | Express | 4.x |
+| Database | MongoDB | -- |
+| ODM | Mongoose | 9.x |
+| Validation | Zod | 4.x |
+| Auth | jsonwebtoken | 9.x |
+| Password Hashing | bcrypt | 6.x |
+| Rate Limiting | express-rate-limit | 8.x |
+| Frontend | React | 18.x |
+| Frontend Build | Vite | 5.x |
+| Frontend Styling | Tailwind CSS | 3.x |
+| State Management | Zustand | 4.x |
+| HTTP Client | Axios | 1.x |
 
-### Immutable Data Pattern
+---
 
-- Explanation: Historical records are append-only and cannot be edited after creation.
-- In this project: Ledger entries are written once and protected from mutation/deletion to preserve financial history.
-- Why it matters: Enables reliable forensics, compliance checks, and dispute investigation.
+## Project Structure
 
-### Indexing Strategy
+```
+.
+├── backend/
+│   ├── server.js                          # Entry point, process signal handlers
+│   ├── package.json
+│   └── src/
+│       ├── app.js                         # Express app, CORS, rate limiting, routes, error handling
+│       ├── config/
+│       │   └── db.js                      # MongoDB connection with reconnect listeners
+│       ├── controllers/
+│       │   ├── auth.controller.js         # Register, login, logout with Zod validation
+│       │   ├── account.controller.js      # Create, list, balance with ownership checks
+│       │   ├── transaction.controller.js  # Transfer, system funding, history with pagination
+│       │   └── admin.controller.js        # Freeze, unfreeze, users, transactions, stats
+│       ├── services/
+│       │   └── transaction.service.js     # Core transfer logic, idempotency, retry, sessions
+│       ├── middleware/
+│       │   ├── auth.middleware.js          # JWT verification, blacklist check, system-user guard
+│       │   ├── admin.middleware.js         # ADMIN role enforcement
+│       │   └── rateLimit.middleware.js     # Global (500/15min) and strict (50/15min) limiters
+│       ├── models/
+│       │   ├── user.model.js              # Email, name, password (bcrypt), role, systemUser
+│       │   ├── account.model.js           # User (unique), status, currency, balance
+│       │   ├── transaction.model.js       # Accounts, status, retryCount, idempotencyKey (compound unique)
+│       │   ├── ledger.model.js            # Immutable DEBIT/CREDIT entries with balanceAfter
+│       │   ├── auditLog.model.js          # Action, status, userId, transactionId, details
+│       │   └── blacklist.model.js         # Token with 3-day TTL index
+│       ├── events/
+│       │   ├── eventBus.js                # Node.js EventEmitter singleton
+│       │   └── notification.handler.js    # Listeners for transaction.completed / transaction.failed
+│       └── utils/
+│           └── constants.js               # TRANSACTION_STATUS, ACCOUNT_STATUS, ROLES, LEDGER_TYPE, AUDIT_STATUS
+│
+└── frontend/
+    ├── index.html
+    ├── package.json
+    ├── vite.config.js                     # Proxy /api to localhost:3000
+    ├── tailwind.config.js
+    └── src/
+        ├── main.jsx                       # React entry with BrowserRouter
+        ├── App.jsx                        # Route definitions, protected routes, admin guards
+        ├── index.css                      # Global styles and dark theme
+        ├── api/
+        │   └── axios.js                   # Axios instance with auth interceptors
+        ├── components/
+        │   ├── Navbar.jsx                 # Navigation with admin section, user avatar, logout
+        │   ├── ProtectedRoute.jsx         # Auth and admin role guard
+        │   ├── StatusBadge.jsx            # INITIATED/PROCESSING/COMPLETED/FAILED badges
+        │   ├── ToastContainer.jsx         # Global notification toasts (Zustand-driven)
+        │   └── admin/
+        │       ├── AccountActionButtons.jsx        # Freeze/unfreeze toggle
+        │       └── TransactionDetailsModal.jsx     # Full transaction inspection modal
+        ├── pages/
+        │   ├── Landing.jsx                # Public landing page
+        │   ├── Login.jsx                  # Login form
+        │   ├── Register.jsx               # Registration form
+        │   ├── Dashboard.jsx              # Virtual card, balance, recent activity
+        │   ├── Transfer.jsx               # Idempotent transfer with retry workflow
+        │   ├── Transactions.jsx           # Full transaction history
+        │   ├── AdminUsers.jsx             # User management with freeze controls
+        │   ├── AdminTransactions.jsx       # Filterable transaction monitoring
+        │   └── AdminStats.jsx             # System metrics dashboard
+        └── store/
+            ├── authStore.js               # Auth state with localStorage persistence
+            └── notificationStore.js       # Toast queue with auto-dismiss
+```
 
-- Explanation: Query-critical fields are indexed to keep latency stable as data grows.
-- In this project: Unique indexes enforce one-account-per-user and idempotency constraints; lookup-heavy paths use indexed identifiers.
-- Why it matters: Protects correctness constraints and avoids performance degradation at scale.
+---
 
-### Pagination for Scalability
+## Run Locally
 
-- Explanation: Large result sets are retrieved in bounded chunks.
-- In this project: Transaction and admin listing endpoints expose page, limit, and hasNextPage controls for bounded reads.
-- Why it matters: Prevents heavy scans, reduces payload size, and keeps API response times predictable.
-
-### Authentication & Authorization
-
-- Explanation: Identity verification is separated from permission checks.
-- In this project: JWT-based auth protects routes, with ownership checks and RBAC (USER vs ADMIN) for privileged APIs.
-- Why it matters: Reduces unauthorized access risk and enforces least privilege.
-
-### Token Blacklisting
-
-- Explanation: Stateless tokens can be explicitly revoked before natural expiry.
-- In this project: Logout stores token identifiers in a blacklist with TTL so revoked sessions are denied immediately.
-- Why it matters: Closes post-logout replay windows and improves session security.
-
-### Rate Limiting
-
-- Explanation: Request throughput is capped per client to control abuse.
-- In this project: A strict limiter is applied to sensitive transaction and admin routes, with a broader global API limiter for baseline protection.
-- Why it matters: Improves resilience against brute force and traffic spikes while preserving service availability.
-
-### Event-Driven Architecture
-
-- Explanation: Business outcomes are emitted as events and processed by independent consumers.
-- In this project: transaction.completed and transaction.failed are emitted from transfer services and handled by decoupled notification listeners.
-- Why it matters: Side effects remain modular and extensible without coupling to transaction execution.
-
-### Observability (Audit Logs)
-
-- Explanation: Operational events are recorded for traceability and incident analysis.
-- In this project: Transfer success and failure are persisted in a dedicated audit log collection with user and transaction linkage.
-- Why it matters: Accelerates debugging, supports compliance workflows, and improves production visibility.
-
-## 🚀 Run Locally
+### Backend
 
 ```bash
+cd backend
 npm install
 ```
 
-Create .env:
+Create `backend/.env`:
 
 ```env
 PORT=3000
@@ -392,108 +522,7 @@ NODE_ENV=development
 npm run dev
 ```
 
-## 🔧 Environment Variables
-
-| Variable    | Required | Purpose                   |
-| ----------- | -------- | ------------------------- |
-| PORT        | No       | API port, default 3000    |
-| MONGODB_URI | Yes      | MongoDB connection string |
-| JWT_SECRET  | Yes      | JWT signing secret        |
-| NODE_ENV    | No       | Environment mode          |
-
-## 📈 Future Improvements
-
-- Reversal and dispute workflows
-- Advanced statement filters and exports
-- OpenAPI contract + integration test suite
-- Observability with metrics, tracing, and structured logs
-- Outbox and durable event delivery for cross-service integrations
-
-## 💼 Resume Snapshot
-
-Built a production-grade banking backend handling concurrency, fault tolerance, and financial data integrity using atomic transactions, state-driven retries, compound index-based idempotency, immutable double-entry ledgering, and event-driven architecture with audit logging and RBAC controls.
-
-## 🖥️ Frontend (React Dashboard)
-
-This repository includes a React dashboard in the `frontend/` folder that mirrors backend transaction state and retry behavior without changing API contracts.
-
-### Frontend Stack
-
-- React (Vite)
-- Tailwind CSS
-- Axios
-- React Router
-- Zustand (auth and notification state)
-
-### Frontend Capabilities
-
-- Authentication flow:
-  - Register, Login, Logout
-  - Protected user routes and admin-only routes
-- User dashboard:
-  - Available balance
-  - Account status
-  - Shortened account number with copy action
-  - Recent transactions overview
-- Transfer flow:
-  - Idempotency-driven transaction submission:
-    - Generates a unique idempotencyKey per transaction intent
-    - Reuses the same key for retries to prevent duplicate execution
-  - State-driven transaction lifecycle UI:
-    - INITIATED -> PROCESSING -> COMPLETED / FAILED
-    - Visual status badges and loading indicators
-  - User-triggered retry mechanism:
-    - Retry button shown only for FAILED transactions
-    - Retries reuse the same idempotencyKey
-    - Backend-controlled retryCount governs retry eligibility
-  - Bounded retry handling:
-    - Maximum 3 retry attempts enforced
-    - UI disables retry and prompts user to modify request after limit is reached
-  - Account state enforcement:
-    - Transfers disabled for FROZEN or CLOSED accounts
-    - UI reflects backend business constraints before API call
-  - Input-driven intent reset:
-    - Changing amount or recipient generates a new idempotencyKey
-    - Ensures new transaction intent vs retry distinction
-- Transactions view:
-  - Status-driven badges (INITIATED / PROCESSING / COMPLETED / FAILED)
-  - Direction badges (IN / OUT)
-  - Retry metadata visibility:
-    - retryCount and failureReason displayed per transaction
-  - Clear distinction between retryable and permanently failed transactions
-- Admin panel:
-  - Users listing with account status
-  - Transaction monitoring with filters, retry/failure visibility, and details modal
-  - Freeze/unfreeze account controls with state-driven actions
-  - Admin stats view
-
-#### Frontend-Backend Consistency
-
-- Frontend strictly follows backend transaction state and retry rules
-- Idempotency and retry logic are not duplicated but respected via API responses
-- UI exposes system-level signals (status, retries, failure reasons) for transparency and debugging
-
-### Frontend Folder Structure
-
-```text
-frontend/
-├─ index.html
-├─ package.json
-├─ tailwind.config.js
-├─ vite.config.js
-└─ src/
-   ├─ main.jsx
-   ├─ App.jsx
-   ├─ index.css
-   ├─ api/
-   ├─ components/
-   ├─ pages/
-   └─ store/
-```
-
-### Run Frontend Locally
-
-From repository root:
+### Frontend
 
 ```bash
 cd frontend
@@ -501,6 +530,30 @@ npm install
 npm run dev
 ```
 
-Default Vite dev server: `http://localhost:5173`
+Vite dev server runs at `http://localhost:5173` and proxies `/api` requests to the backend at `http://localhost:3000`.
 
-The frontend is configured to call backend APIs under `/api` and is designed to work with the existing backend routes in this project.
+### Environment Variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `PORT` | No | API port (default: 3000) |
+| `MONGODB_URI` | Yes | MongoDB connection string |
+| `JWT_SECRET` | Yes | JWT signing secret |
+| `NODE_ENV` | No | `development` or `production` |
+
+---
+
+## Future Improvements
+
+- Reversal and dispute workflows
+- Cursor-based pagination for high-volume transaction streams
+- OpenAPI spec and integration test suite
+- Structured logging and distributed tracing
+- Outbox pattern for durable event delivery across services
+- Statement exports (CSV/PDF)
+
+---
+
+## Resume Snapshot
+
+Built a full-stack banking system handling concurrent transfers, idempotent request deduplication, and financial data integrity using atomic MongoDB sessions, compound index-based idempotency, bounded state-driven retries, immutable double-entry ledgering, event-driven architecture, and RBAC -- with a React dashboard that mirrors backend transaction lifecycle and retry behavior in the UI.
